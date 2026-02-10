@@ -1,0 +1,3433 @@
+{
+	"info": {
+		"_postman_id": "hardware-pos-api-2024",
+		"name": "HardwarePOS - Cloud-based POS API",
+		"description": "Complete API collection for HardwarePOS - Cloud-based Point of Sale System\n\n**Base URL**: {{base_url}}/api/v1\n**Authentication**: Laravel Sanctum (Bearer Token)\n**Currency**: PHP (Philippine Peso - stored as centavos)\n**Timezone**: Asia/Manila\n\n## Authentication\n1. Login via `/auth/login` to get a Bearer token\n2. Use the token in all protected endpoints: `Authorization: Bearer {{token}}`\n\n## Important Notes\n- All monetary values are in centavos (divide by 100 for display)\n- Multi-tenant system (data filtered by store_id)\n- Activity logging enabled on all operations",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.data && jsonData.data.token) {",
+									"        pm.collectionVariables.set('token', jsonData.data.token);",
+									"        console.log('Token saved to collection variable');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@hardwarepos.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "login"]
+						},
+						"description": "Authenticate user and receive Bearer token"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Authenticated User",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/me",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "me"]
+						},
+						"description": "Get current authenticated user information"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"phone\": \"09171234567\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "profile"]
+						},
+						"description": "Update authenticated user profile"
+					},
+					"response": []
+				},
+				{
+					"name": "Change Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"current_password\": \"oldpassword123\",\n    \"password\": \"newpassword123\",\n    \"password_confirmation\": \"newpassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/change-password",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "change-password"]
+						},
+						"description": "Change user password"
+					},
+					"response": []
+				},
+				{
+					"name": "Forgot Password",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/forgot-password",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "forgot-password"]
+						},
+						"description": "Request password reset link"
+					},
+					"response": []
+				},
+				{
+					"name": "Reset Password",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\",\n    \"token\": \"reset-token-from-email\",\n    \"password\": \"newpassword123\",\n    \"password_confirmation\": \"newpassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/reset-password",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "reset-password"]
+						},
+						"description": "Complete password reset with token"
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/logout",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "logout"]
+						},
+						"description": "Logout and invalidate current token"
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints for login, logout, password management"
+		},
+		{
+			"name": "2. Products",
+			"item": [
+				{
+					"name": "List Products",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products?page=1&per_page=15&sort_by=name&sort_order=asc",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								},
+								{
+									"key": "q",
+									"value": "search term",
+									"disabled": true
+								},
+								{
+									"key": "category_id",
+									"value": "uuid",
+									"disabled": true
+								},
+								{
+									"key": "is_active",
+									"value": "1",
+									"disabled": true
+								},
+								{
+									"key": "low_stock",
+									"value": "1",
+									"disabled": true
+								},
+								{
+									"key": "sort_by",
+									"value": "name"
+								},
+								{
+									"key": "sort_order",
+									"value": "asc"
+								}
+							]
+						},
+						"description": "Get paginated list of products with optional filters"
+					},
+					"response": []
+				},
+				{
+					"name": "Search Products (POS)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/search?q=hammer",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", "search"],
+							"query": [
+								{
+									"key": "q",
+									"value": "hammer"
+								}
+							]
+						},
+						"description": "Fast search for POS - search by name, SKU, or barcode"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product by UUID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "product-uuid-here"
+								}
+							]
+						},
+						"description": "Get detailed product information"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product by Barcode",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/barcode/:barcode",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", "barcode", ":barcode"],
+							"variable": [
+								{
+									"key": "barcode",
+									"value": "1234567890123"
+								}
+							]
+						},
+						"description": "Lookup product by barcode for POS scanning"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Product",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Hammer - Claw Type\",\n    \"sku\": \"HAM-001\",\n    \"barcode\": \"1234567890123\",\n    \"category_id\": \"category-uuid\",\n    \"unit_id\": \"unit-uuid\",\n    \"cost_price\": 25000,\n    \"retail_price\": 35000,\n    \"current_stock\": 100,\n    \"reorder_point\": 20,\n    \"description\": \"Professional claw hammer\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/products",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products"]
+						},
+						"description": "Create new product (prices in centavos)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Hammer - Claw Type (Updated)\",\n    \"retail_price\": 38000,\n    \"current_stock\": 150,\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "product-uuid-here"
+								}
+							]
+						},
+						"description": "Update existing product"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Product",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "product-uuid-here"
+								}
+							]
+						},
+						"description": "Soft delete product"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Low Stock Products",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/low-stock",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", "low-stock"]
+						},
+						"description": "Get products below reorder point"
+					},
+					"response": []
+				},
+				{
+					"name": "Adjust Product Stock",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"quantity\": 50,\n    \"type\": \"add\",\n    \"reason\": \"Stock replenishment\",\n    \"notes\": \"Received from supplier ABC\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/:uuid/adjust-stock",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", ":uuid", "adjust-stock"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "product-uuid-here"
+								}
+							]
+						},
+						"description": "Adjust product stock (type: add or subtract)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Stock History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/:uuid/stock-history",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", ":uuid", "stock-history"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "product-uuid-here"
+								}
+							]
+						},
+						"description": "Get product stock adjustment history"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Update Products",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"products\": [\n        {\n            \"uuid\": \"product-uuid-1\",\n            \"retail_price\": 40000\n        },\n        {\n            \"uuid\": \"product-uuid-2\",\n            \"is_active\": false\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/products/bulk-update",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "products", "bulk-update"]
+						},
+						"description": "Update multiple products at once"
+					},
+					"response": []
+				}
+			],
+			"description": "Product management endpoints"
+		},
+		{
+			"name": "3. Categories",
+			"item": [
+				{
+					"name": "List Categories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/categories?page=1&per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "categories"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								}
+							]
+						},
+						"description": "Get paginated list of categories"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Category",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/categories/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "categories", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "category-uuid-here"
+								}
+							]
+						},
+						"description": "Get category details"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Hardware Tools\",\n    \"slug\": \"hardware-tools\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/categories",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "categories"]
+						},
+						"description": "Create new category"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Hardware Tools (Updated)\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/categories/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "categories", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "category-uuid-here"
+								}
+							]
+						},
+						"description": "Update category"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/categories/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "categories", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "category-uuid-here"
+								}
+							]
+						},
+						"description": "Delete category (fails if has products)"
+					},
+					"response": []
+				},
+				{
+					"name": "Reorder Categories",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"categories\": [\n        {\"uuid\": \"cat-uuid-1\", \"order\": 1},\n        {\"uuid\": \"cat-uuid-2\", \"order\": 2}\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/categories/reorder",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "categories", "reorder"]
+						},
+						"description": "Reorder categories"
+					},
+					"response": []
+				}
+			],
+			"description": "Product category management"
+		},
+		{
+			"name": "4. Units of Measure",
+			"item": [
+				{
+					"name": "List Units",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/units",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "units"]
+						},
+						"description": "Get all units of measure (not paginated)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Unit",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/units/:id",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "units", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Get unit details"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Unit",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Pieces\",\n    \"abbreviation\": \"pcs\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/units",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "units"]
+						},
+						"description": "Create new unit of measure"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Unit",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Pieces\",\n    \"abbreviation\": \"pc\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/units/:id",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "units", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Update unit of measure"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Unit",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/units/:id",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "units", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Delete unit (fails if in use)"
+					},
+					"response": []
+				}
+			],
+			"description": "Units of measure management"
+		},
+		{
+			"name": "5. Sales (POS)",
+			"item": [
+				{
+					"name": "List Sales",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales?page=1&per_page=15&status=completed",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								},
+								{
+									"key": "status",
+									"value": "completed",
+									"description": "completed|voided|refunded"
+								},
+								{
+									"key": "customer_id",
+									"value": "uuid",
+									"disabled": true
+								},
+								{
+									"key": "date_from",
+									"value": "2024-01-01",
+									"disabled": true
+								},
+								{
+									"key": "date_to",
+									"value": "2024-12-31",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "sale number",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated sales with filters"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"customer_id\": \"customer-uuid-optional\",\n    \"items\": [\n        {\n            \"product_id\": \"product-uuid-1\",\n            \"quantity\": 2,\n            \"price\": 35000\n        },\n        {\n            \"product_id\": \"product-uuid-2\",\n            \"quantity\": 1,\n            \"price\": 15000\n        }\n    ],\n    \"payment_method\": \"cash\",\n    \"amount_paid\": 100000,\n    \"notes\": \"Customer notes here\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales"]
+						},
+						"description": "Create new sale (payment_method: cash|gcash|maya|bank_transfer|check)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Sale",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "sale-uuid-here"
+								}
+							]
+						},
+						"description": "Get sale details with items"
+					},
+					"response": []
+				},
+				{
+					"name": "Void Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reason\": \"Customer cancelled order\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/:uuid/void",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", ":uuid", "void"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "sale-uuid-here"
+								}
+							]
+						},
+						"description": "Void a completed sale"
+					},
+					"response": []
+				},
+				{
+					"name": "Refund Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"sale_item_id\": \"item-uuid-1\",\n            \"quantity\": 1\n        }\n    ],\n    \"reason\": \"Defective product\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/:uuid/refund",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", ":uuid", "refund"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "sale-uuid-here"
+								}
+							]
+						},
+						"description": "Refund sale (full or partial)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Receipt",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/:uuid/receipt",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", ":uuid", "receipt"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "sale-uuid-here"
+								}
+							]
+						},
+						"description": "Get receipt data (JSON)"
+					},
+					"response": []
+				},
+				{
+					"name": "Download Receipt PDF",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/:uuid/receipt/pdf",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", ":uuid", "receipt", "pdf"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "sale-uuid-here"
+								}
+							]
+						},
+						"description": "Download receipt as PDF"
+					},
+					"response": []
+				},
+				{
+					"name": "Send Receipt",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"method\": \"email\",\n    \"recipient\": \"customer@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/:uuid/receipt/send",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", ":uuid", "receipt", "send"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "sale-uuid-here"
+								}
+							]
+						},
+						"description": "Send receipt via email or SMS"
+					},
+					"response": []
+				},
+				{
+					"name": "Hold Transaction",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"product_id\": \"product-uuid-1\",\n            \"quantity\": 2,\n            \"price\": 35000\n        }\n    ],\n    \"customer_id\": \"customer-uuid-optional\",\n    \"notes\": \"Customer will return later\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/hold",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", "hold"]
+						},
+						"description": "Hold/pause current transaction"
+					},
+					"response": []
+				},
+				{
+					"name": "List Held Transactions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/held/list",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", "held", "list"]
+						},
+						"description": "Get all held transactions"
+					},
+					"response": []
+				},
+				{
+					"name": "Resume Held Transaction",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/held/:id/resume",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", "held", ":id", "resume"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "held-transaction-id"
+								}
+							]
+						},
+						"description": "Resume held transaction"
+					},
+					"response": []
+				},
+				{
+					"name": "Discard Held Transaction",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/held/:id",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", "held", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "held-transaction-id"
+								}
+							]
+						},
+						"description": "Delete held transaction"
+					},
+					"response": []
+				},
+				{
+					"name": "Preview Next Sale Number",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sales/next-number/preview",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sales", "next-number", "preview"]
+						},
+						"description": "Get next sale number preview"
+					},
+					"response": []
+				}
+			],
+			"description": "Point of Sale and sales management"
+		},
+		{
+			"name": "6. Customers",
+			"item": [
+				{
+					"name": "List Customers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers?page=1&per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								},
+								{
+									"key": "q",
+									"value": "search",
+									"disabled": true
+								},
+								{
+									"key": "type",
+									"value": "walk_in|regular|contractor|government",
+									"disabled": true
+								},
+								{
+									"key": "is_active",
+									"value": "1",
+									"disabled": true
+								},
+								{
+									"key": "has_outstanding_balance",
+									"value": "1",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated customers with filters"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Customer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Juan dela Cruz Hardware\",\n    \"type\": \"regular\",\n    \"phone\": \"09171234567\",\n    \"email\": \"juan@example.com\",\n    \"address\": \"123 Main Street, Manila\",\n    \"credit_limit\": 10000000,\n    \"credit_terms_days\": 30,\n    \"business_name\": \"JDC Hardware Supplies\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers"]
+						},
+						"description": "Create customer (type: walk_in|regular|contractor|government)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Customer",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Get customer details"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Customer",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Juan dela Cruz Hardware (Updated)\",\n    \"phone\": \"09178888888\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Update customer"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Customer",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Delete customer"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Customer Transactions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid/transactions?page=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid", "transactions"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								}
+							],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Get customer credit transactions"
+					},
+					"response": []
+				},
+				{
+					"name": "Record Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 5000000,\n    \"payment_method\": \"gcash\",\n    \"reference_number\": \"GC123456789\",\n    \"payment_date\": \"2024-02-09\",\n    \"invoice_ids\": [\"invoice-uuid-1\", \"invoice-uuid-2\"],\n    \"notes\": \"Payment via GCash\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid/payments",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid", "payments"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Record customer payment (auto-allocates FIFO if no invoice_ids)"
+					},
+					"response": []
+				},
+				{
+					"name": "Adjust Credit Limit",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"credit_limit\": 15000000,\n    \"reason\": \"Good payment history\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid/credit-limit",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid", "credit-limit"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Adjust customer credit limit"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Customer Statement",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid/statement?start_date=2024-01-01&end_date=2024-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid", "statement"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2024-12-31"
+								}
+							],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Get customer statement (JSON)"
+					},
+					"response": []
+				},
+				{
+					"name": "Download Statement PDF",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid/statement/pdf?start_date=2024-01-01&end_date=2024-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid", "statement", "pdf"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2024-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2024-12-31"
+								}
+							],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Download statement as PDF"
+					},
+					"response": []
+				},
+				{
+					"name": "Send Payment Reminder",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"method\": \"email\",\n    \"message\": \"Custom reminder message\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/:uuid/send-reminder",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", ":uuid", "send-reminder"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "customer-uuid-here"
+								}
+							]
+						},
+						"description": "Send payment reminder via email/SMS"
+					},
+					"response": []
+				},
+				{
+					"name": "Credit Overview",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/credit/overview",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", "credit", "overview"]
+						},
+						"description": "Get credit statistics overview"
+					},
+					"response": []
+				},
+				{
+					"name": "Credit Aging Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/credit/aging",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", "credit", "aging"]
+						},
+						"description": "Get aging analysis (4 buckets: current, 31-60, 61-90, >90)"
+					},
+					"response": []
+				},
+				{
+					"name": "Overdue Accounts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/credit/overdue",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", "credit", "overdue"]
+						},
+						"description": "Get customers with overdue balances"
+					},
+					"response": []
+				},
+				{
+					"name": "Export Customers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/customers/export",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "customers", "export"]
+						},
+						"description": "Export customers to Excel"
+					},
+					"response": []
+				}
+			],
+			"description": "Customer management and credit operations"
+		},
+		{
+			"name": "7. Dashboard",
+			"item": [
+				{
+					"name": "Dashboard Summary",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/summary",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "summary"]
+						},
+						"description": "Get today's summary statistics"
+					},
+					"response": []
+				},
+				{
+					"name": "Sales Trend",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/sales-trend?days=30",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "sales-trend"],
+							"query": [
+								{
+									"key": "days",
+									"value": "30",
+									"description": "1-365 days"
+								}
+							]
+						},
+						"description": "Get sales trend over time"
+					},
+					"response": []
+				},
+				{
+					"name": "Top Products",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/top-products?limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "top-products"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "1-50"
+								}
+							]
+						},
+						"description": "Get top selling products"
+					},
+					"response": []
+				},
+				{
+					"name": "Sales by Category",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/sales-by-category",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "sales-by-category"]
+						},
+						"description": "Get sales breakdown by category"
+					},
+					"response": []
+				},
+				{
+					"name": "Credit Aging",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/credit-aging",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "credit-aging"]
+						},
+						"description": "Get credit aging summary"
+					},
+					"response": []
+				},
+				{
+					"name": "Recent Transactions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/recent-transactions?limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "recent-transactions"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Get recent sales transactions"
+					},
+					"response": []
+				},
+				{
+					"name": "Stock Alerts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/stock-alerts",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "stock-alerts"]
+						},
+						"description": "Get low stock alerts"
+					},
+					"response": []
+				},
+				{
+					"name": "Upcoming Deliveries",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/upcoming-deliveries",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "upcoming-deliveries"]
+						},
+						"description": "Get upcoming delivery schedule"
+					},
+					"response": []
+				},
+				{
+					"name": "Top Customers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/top-customers?limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "top-customers"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Get top customers by sales"
+					},
+					"response": []
+				},
+				{
+					"name": "Comprehensive Dashboard",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dashboard/comprehensive",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dashboard", "comprehensive"]
+						},
+						"description": "Get all dashboard data in one call"
+					},
+					"response": []
+				}
+			],
+			"description": "Dashboard analytics and KPIs"
+		},
+		{
+			"name": "8. Suppliers",
+			"item": [
+				{
+					"name": "List Suppliers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers?page=1&per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								}
+							]
+						},
+						"description": "Get paginated suppliers"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Supplier",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"ABC Hardware Supplier\",\n    \"contact_person\": \"John Doe\",\n    \"email\": \"john@abc.com\",\n    \"phone\": \"09271234567\",\n    \"address\": \"456 Supply Avenue, Quezon City\",\n    \"payment_terms_days\": 30\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers"]
+						},
+						"description": "Create new supplier"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Supplier",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Get supplier details"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Supplier",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"ABC Hardware Supplier (Updated)\",\n    \"phone\": \"09278888888\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Update supplier"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Supplier",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Delete supplier"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Supplier Products",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/products",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "products"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Get products from supplier"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Product to Supplier",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"product_id\": \"product-uuid\",\n    \"supplier_price\": 20000,\n    \"lead_time_days\": 7\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/products",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "products"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Link product to supplier with pricing"
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Product from Supplier",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/products/:productUuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "products", ":productUuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								},
+								{
+									"key": "productUuid",
+									"value": "product-uuid-here"
+								}
+							]
+						},
+						"description": "Remove product from supplier"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Price History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/price-history",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "price-history"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Get supplier price history"
+					},
+					"response": []
+				}
+			],
+			"description": "Supplier management"
+		},
+		{
+			"name": "9. Purchase Orders",
+			"item": [
+				{
+					"name": "List Purchase Orders",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders?page=1&per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								},
+								{
+									"key": "status",
+									"value": "draft|submitted|received|cancelled",
+									"disabled": true
+								},
+								{
+									"key": "supplier_id",
+									"value": "uuid",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated purchase orders"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Purchase Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"supplier_id\": \"supplier-uuid\",\n    \"expected_delivery_date\": \"2024-03-01\",\n    \"items\": [\n        {\n            \"product_id\": \"product-uuid-1\",\n            \"quantity\": 100,\n            \"unit_price\": 20000\n        },\n        {\n            \"product_id\": \"product-uuid-2\",\n            \"quantity\": 50,\n            \"unit_price\": 15000\n        }\n    ],\n    \"notes\": \"Urgent order\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders"]
+						},
+						"description": "Create purchase order (draft status)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Purchase Order",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "po-uuid-here"
+								}
+							]
+						},
+						"description": "Get PO details with items"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Purchase Order",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"expected_delivery_date\": \"2024-03-15\",\n    \"notes\": \"Updated notes\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "po-uuid-here"
+								}
+							]
+						},
+						"description": "Update PO (only if draft)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Purchase Order",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "po-uuid-here"
+								}
+							]
+						},
+						"description": "Delete PO (only if draft)"
+					},
+					"response": []
+				},
+				{
+					"name": "Submit Purchase Order",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders/:uuid/submit",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders", ":uuid", "submit"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "po-uuid-here"
+								}
+							]
+						},
+						"description": "Submit PO for approval/processing"
+					},
+					"response": []
+				},
+				{
+					"name": "Receive Purchase Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"received_date\": \"2024-02-09\",\n    \"notes\": \"All items received in good condition\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders/:uuid/receive",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders", ":uuid", "receive"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "po-uuid-here"
+								}
+							]
+						},
+						"description": "Mark PO as received and update stock"
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Purchase Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reason\": \"Supplier out of stock\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders/:uuid/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders", ":uuid", "cancel"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "po-uuid-here"
+								}
+							]
+						},
+						"description": "Cancel purchase order"
+					},
+					"response": []
+				},
+				{
+					"name": "Download PO as PDF",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/purchase-orders/:uuid/pdf",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "purchase-orders", ":uuid", "pdf"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "po-uuid-here"
+								}
+							]
+						},
+						"description": "Download PO as PDF"
+					},
+					"response": []
+				}
+			],
+			"description": "Purchase order management"
+		},
+		{
+			"name": "10. Deliveries",
+			"item": [
+				{
+					"name": "Today's Schedule",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/today-schedule",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", "today-schedule"]
+						},
+						"description": "Get today's delivery schedule"
+					},
+					"response": []
+				},
+				{
+					"name": "List Deliveries",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries?page=1&per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "per_page",
+									"value": "15"
+								},
+								{
+									"key": "status",
+									"value": "pending|in_transit|delivered|cancelled",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated deliveries"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Delivery",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"customer_id\": \"customer-uuid\",\n    \"sale_id\": \"sale-uuid-optional\",\n    \"scheduled_date\": \"2024-02-10\",\n    \"delivery_address\": \"123 Customer Street, Manila\",\n    \"items\": [\n        {\n            \"product_id\": \"product-uuid-1\",\n            \"quantity\": 10\n        }\n    ],\n    \"notes\": \"Deliver before 5pm\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries"]
+						},
+						"description": "Create new delivery"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Delivery",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Get delivery details"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Delivery",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"scheduled_date\": \"2024-02-11\",\n    \"notes\": \"Updated delivery time\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Update delivery"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Delivery",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Delete delivery"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Delivery Status",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"in_transit\",\n    \"notes\": \"Out for delivery\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid", "status"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Update delivery status (pending|in_transit|delivered|cancelled)"
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Proof of Delivery",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "proof_image",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "signature",
+									"value": "",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid/proof",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid", "proof"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Upload proof photo/signature"
+					},
+					"response": []
+				},
+				{
+					"name": "Download Proof",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid/proof/download",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid", "proof", "download"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Download proof of delivery"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Delivery Receipt",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid/receipt",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid", "receipt"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Get delivery receipt (JSON)"
+					},
+					"response": []
+				},
+				{
+					"name": "Download Receipt PDF",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid/receipt/pdf",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid", "receipt", "pdf"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Download receipt as PDF"
+					},
+					"response": []
+				},
+				{
+					"name": "Assign Driver",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"driver_id\": \"user-uuid\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/deliveries/:uuid/assign-driver",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "deliveries", ":uuid", "assign-driver"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "delivery-uuid-here"
+								}
+							]
+						},
+						"description": "Assign driver to delivery"
+					},
+					"response": []
+				}
+			],
+			"description": "Delivery management and tracking"
+		},
+		{
+			"name": "11. Reports",
+			"item": [
+				{
+					"name": "Sales Reports",
+					"item": [
+						{
+							"name": "Daily Sales Report",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/sales/daily?date=2024-02-09",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "sales", "daily"],
+									"query": [
+										{
+											"key": "date",
+											"value": "2024-02-09"
+										}
+									]
+								},
+								"description": "Get daily sales report"
+							},
+							"response": []
+						},
+						{
+							"name": "Sales Summary",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/sales/summary?start_date=2024-01-01&end_date=2024-12-31&group_by=month",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "sales", "summary"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										},
+										{
+											"key": "group_by",
+											"value": "month",
+											"description": "day|week|month"
+										},
+										{
+											"key": "export",
+											"value": "pdf",
+											"description": "pdf|excel",
+											"disabled": true
+										}
+									]
+								},
+								"description": "Get sales summary with date range"
+							},
+							"response": []
+						},
+						{
+							"name": "Sales by Category",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/sales/by-category?start_date=2024-01-01&end_date=2024-12-31",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "sales", "by-category"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										}
+									]
+								},
+								"description": "Sales breakdown by category"
+							},
+							"response": []
+						},
+						{
+							"name": "Sales by Customer",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/sales/by-customer?start_date=2024-01-01&end_date=2024-12-31&limit=20",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "sales", "by-customer"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										},
+										{
+											"key": "limit",
+											"value": "20"
+										}
+									]
+								},
+								"description": "Sales by customer"
+							},
+							"response": []
+						},
+						{
+							"name": "Sales by Payment Method",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/sales/by-payment-method?start_date=2024-01-01&end_date=2024-12-31",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "sales", "by-payment-method"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										}
+									]
+								},
+								"description": "Sales breakdown by payment method"
+							},
+							"response": []
+						},
+						{
+							"name": "Sales by Cashier",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/sales/by-cashier?start_date=2024-01-01&end_date=2024-12-31",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "sales", "by-cashier"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										}
+									]
+								},
+								"description": "Sales by cashier/user"
+							},
+							"response": []
+						}
+					],
+					"description": "Sales analytics reports"
+				},
+				{
+					"name": "Inventory Reports",
+					"item": [
+						{
+							"name": "Inventory Valuation",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/inventory/valuation",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "inventory", "valuation"]
+								},
+								"description": "Current inventory valuation"
+							},
+							"response": []
+						},
+						{
+							"name": "Stock Movement",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/inventory/movement?start_date=2024-01-01&end_date=2024-12-31",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "inventory", "movement"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										}
+									]
+								},
+								"description": "Stock movement report"
+							},
+							"response": []
+						},
+						{
+							"name": "Low Stock Report",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/inventory/low-stock",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "inventory", "low-stock"]
+								},
+								"description": "Products below reorder point"
+							},
+							"response": []
+						},
+						{
+							"name": "Dead Stock Report",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/inventory/dead-stock?days=90",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "inventory", "dead-stock"],
+									"query": [
+										{
+											"key": "days",
+											"value": "90",
+											"description": "No sales in X days"
+										}
+									]
+								},
+								"description": "Products with no sales activity"
+							},
+							"response": []
+						},
+						{
+							"name": "Product Profitability",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/inventory/profitability?start_date=2024-01-01&end_date=2024-12-31&limit=20",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "inventory", "profitability"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										},
+										{
+											"key": "limit",
+											"value": "20"
+										}
+									]
+								},
+								"description": "Product profitability analysis"
+							},
+							"response": []
+						}
+					],
+					"description": "Inventory analytics reports"
+				},
+				{
+					"name": "Credit Reports",
+					"item": [
+						{
+							"name": "Aging Report",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/credit/aging",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "credit", "aging"]
+								},
+								"description": "Credit aging report (4 buckets)"
+							},
+							"response": []
+						},
+						{
+							"name": "Collection Report",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/credit/collection?start_date=2024-01-01&end_date=2024-12-31",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "credit", "collection"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										}
+									]
+								},
+								"description": "Payment collection report"
+							},
+							"response": []
+						}
+					],
+					"description": "Credit and accounts receivable reports"
+				},
+				{
+					"name": "Purchase Reports",
+					"item": [
+						{
+							"name": "Purchases by Supplier",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/purchases/by-supplier?start_date=2024-01-01&end_date=2024-12-31",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "purchases", "by-supplier"],
+									"query": [
+										{
+											"key": "start_date",
+											"value": "2024-01-01"
+										},
+										{
+											"key": "end_date",
+											"value": "2024-12-31"
+										}
+									]
+								},
+								"description": "Purchase breakdown by supplier"
+							},
+							"response": []
+						},
+						{
+							"name": "Price Comparison",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/reports/purchases/price-comparison?product_id=uuid",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "reports", "purchases", "price-comparison"],
+									"query": [
+										{
+											"key": "product_id",
+											"value": "uuid"
+										}
+									]
+								},
+								"description": "Compare supplier prices"
+							},
+							"response": []
+						}
+					],
+					"description": "Purchase analytics reports"
+				}
+			],
+			"description": "Business intelligence and reporting"
+		},
+		{
+			"name": "12. Settings",
+			"item": [
+				{
+					"name": "Store Settings",
+					"item": [
+						{
+							"name": "Get Store Profile",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/store",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "store"]
+								},
+								"description": "Get store profile and settings"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Store Profile",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"store_name\": \"My Hardware Store\",\n    \"address\": \"123 Main St, Manila\",\n    \"phone\": \"02-1234-5678\",\n    \"email\": \"info@hardwarestore.com\",\n    \"tin\": \"123-456-789-000\",\n    \"business_hours\": \"Mon-Sat 8AM-6PM\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/store",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "store"]
+								},
+								"description": "Update store profile"
+							},
+							"response": []
+						},
+						{
+							"name": "Upload Store Logo",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "logo",
+											"type": "file",
+											"src": []
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/store/logo",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "store", "logo"]
+								},
+								"description": "Upload store logo image"
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Store Logo",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/store/logo",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "store", "logo"]
+								},
+								"description": "Delete store logo"
+							},
+							"response": []
+						}
+					],
+					"description": "Store profile management"
+				},
+				{
+					"name": "User Management",
+					"item": [
+						{
+							"name": "List Users",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users?page=1",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users"],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										}
+									]
+								},
+								"description": "Get all users in store"
+							},
+							"response": []
+						},
+						{
+							"name": "Create User",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"John Cashier\",\n    \"email\": \"john@hardwarestore.com\",\n    \"password\": \"password123\",\n    \"role\": \"cashier\",\n    \"branch_id\": \"branch-uuid\",\n    \"phone\": \"09171234567\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users"]
+								},
+								"description": "Create new user"
+							},
+							"response": []
+						},
+						{
+							"name": "Get User",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users/:uuid",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users", ":uuid"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "user-uuid-here"
+										}
+									]
+								},
+								"description": "Get user details"
+							},
+							"response": []
+						},
+						{
+							"name": "Update User",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"John Updated\",\n    \"phone\": \"09178888888\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users/:uuid",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users", ":uuid"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "user-uuid-here"
+										}
+									]
+								},
+								"description": "Update user"
+							},
+							"response": []
+						},
+						{
+							"name": "Deactivate User",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users/:uuid/deactivate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users", ":uuid", "deactivate"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "user-uuid-here"
+										}
+									]
+								},
+								"description": "Deactivate user account"
+							},
+							"response": []
+						},
+						{
+							"name": "Activate User",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users/:uuid/activate",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users", ":uuid", "activate"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "user-uuid-here"
+										}
+									]
+								},
+								"description": "Activate user account"
+							},
+							"response": []
+						},
+						{
+							"name": "Delete User",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users/:uuid",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users", ":uuid"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "user-uuid-here"
+										}
+									]
+								},
+								"description": "Delete user permanently"
+							},
+							"response": []
+						},
+						{
+							"name": "Reset User Password",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"password\": \"newpassword123\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/users/:uuid/reset-password",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "users", ":uuid", "reset-password"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "user-uuid-here"
+										}
+									]
+								},
+								"description": "Admin reset user password"
+							},
+							"response": []
+						}
+					],
+					"description": "User account management"
+				},
+				{
+					"name": "Branch Management",
+					"item": [
+						{
+							"name": "List Branches",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/branches",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "branches"]
+								},
+								"description": "Get all branches"
+							},
+							"response": []
+						},
+						{
+							"name": "Create Branch",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Main Branch\",\n    \"address\": \"123 Main St, Manila\",\n    \"phone\": \"02-1234-5678\",\n    \"is_active\": true\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/branches",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "branches"]
+								},
+								"description": "Create new branch"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Branch",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Main Branch (Updated)\",\n    \"is_active\": true\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/branches/:uuid",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "branches", ":uuid"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "branch-uuid-here"
+										}
+									]
+								},
+								"description": "Update branch"
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Branch",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/branches/:uuid",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "branches", ":uuid"],
+									"variable": [
+										{
+											"key": "uuid",
+											"value": "branch-uuid-here"
+										}
+									]
+								},
+								"description": "Delete branch"
+							},
+							"response": []
+						}
+					],
+					"description": "Branch management"
+				},
+				{
+					"name": "Permissions",
+					"item": [
+						{
+							"name": "List All Permissions",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/permissions",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "permissions"]
+								},
+								"description": "Get all available permissions"
+							},
+							"response": []
+						},
+						{
+							"name": "Get User Permissions",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/permissions/user/:userId",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "permissions", "user", ":userId"],
+									"variable": [
+										{
+											"key": "userId",
+											"value": "user-id"
+										}
+									]
+								},
+								"description": "Get user-specific permissions"
+							},
+							"response": []
+						},
+						{
+							"name": "Update User Permissions",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"permissions\": [\n        \"view_products\",\n        \"create_sales\",\n        \"view_reports\"\n    ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/permissions/user/:userId",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "permissions", "user", ":userId"],
+									"variable": [
+										{
+											"key": "userId",
+											"value": "user-id"
+										}
+									]
+								},
+								"description": "Update user permissions"
+							},
+							"response": []
+						},
+						{
+							"name": "Get Role Permissions",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/permissions/role/:role",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "permissions", "role", ":role"],
+									"variable": [
+										{
+											"key": "role",
+											"value": "cashier"
+										}
+									]
+								},
+								"description": "Get permissions for role"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Role Permissions",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"permissions\": [\n        \"view_products\",\n        \"create_sales\"\n    ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/permissions/role/:role",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "permissions", "role", ":role"],
+									"variable": [
+										{
+											"key": "role",
+											"value": "cashier"
+										}
+									]
+								},
+								"description": "Update role permissions"
+							},
+							"response": []
+						}
+					],
+					"description": "Permission management"
+				},
+				{
+					"name": "Payment Methods",
+					"item": [
+						{
+							"name": "Get Payment Methods",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/payment-methods",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "payment-methods"]
+								},
+								"description": "Get configured payment methods"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Payment Methods",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"methods\": [\n        {\"code\": \"cash\", \"name\": \"Cash\", \"is_active\": true},\n        {\"code\": \"gcash\", \"name\": \"GCash\", \"is_active\": true},\n        {\"code\": \"maya\", \"name\": \"Maya\", \"is_active\": true},\n        {\"code\": \"bank_transfer\", \"name\": \"Bank Transfer\", \"is_active\": false},\n        {\"code\": \"check\", \"name\": \"Check\", \"is_active\": false}\n    ]\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/payment-methods",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "payment-methods"]
+								},
+								"description": "Update payment methods configuration"
+							},
+							"response": []
+						}
+					],
+					"description": "Payment method configuration"
+				},
+				{
+					"name": "Receipt Template",
+					"item": [
+						{
+							"name": "Get Receipt Template",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/receipt-template",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "receipt-template"]
+								},
+								"description": "Get receipt template settings"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Receipt Template",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"header_text\": \"Thank you for your purchase!\",\n    \"footer_text\": \"Please come again\",\n    \"show_logo\": true,\n    \"show_tin\": true,\n    \"show_address\": true\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/receipt-template",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "receipt-template"]
+								},
+								"description": "Update receipt template"
+							},
+							"response": []
+						},
+						{
+							"name": "Preview Receipt",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/receipt-template/preview",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "receipt-template", "preview"]
+								},
+								"description": "Preview receipt with sample data"
+							},
+							"response": []
+						}
+					],
+					"description": "Receipt template customization"
+				},
+				{
+					"name": "Tax Settings",
+					"item": [
+						{
+							"name": "Get Tax Settings",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/tax",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "tax"]
+								},
+								"description": "Get tax configuration"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Tax Settings",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"vat_rate\": 12,\n    \"is_vat_inclusive\": true,\n    \"tax_type\": \"vat\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/tax",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "tax"]
+								},
+								"description": "Update tax settings"
+							},
+							"response": []
+						}
+					],
+					"description": "Tax configuration"
+				},
+				{
+					"name": "Credit Settings",
+					"item": [
+						{
+							"name": "Get Credit Settings",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/credit",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "credit"]
+								},
+								"description": "Get credit configuration"
+							},
+							"response": []
+						},
+						{
+							"name": "Update Credit Settings",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"default_credit_limit\": 5000000,\n    \"default_terms_days\": 30,\n    \"auto_send_reminders\": true,\n    \"reminder_days_before\": 3\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/credit",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "credit"]
+								},
+								"description": "Update credit settings"
+							},
+							"response": []
+						}
+					],
+					"description": "Credit management settings"
+				},
+				{
+					"name": "System Settings",
+					"item": [
+						{
+							"name": "Get System Settings",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/system",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "system"]
+								},
+								"description": "Get system configuration"
+							},
+							"response": []
+						},
+						{
+							"name": "Update System Settings",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"timezone\": \"Asia/Manila\",\n    \"currency\": \"PHP\",\n    \"date_format\": \"Y-m-d\",\n    \"time_format\": \"H:i:s\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/system",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "system"]
+								},
+								"description": "Update system settings"
+							},
+							"response": []
+						},
+						{
+							"name": "Clear Cache",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/settings/system/clear-cache",
+									"host": ["{{base_url}}"],
+									"path": ["api", "v1", "settings", "system", "clear-cache"]
+								},
+								"description": "Clear application cache"
+							},
+							"response": []
+						}
+					],
+					"description": "System configuration"
+				}
+			],
+			"description": "Settings and configuration management"
+		}
+	]
+}
