@@ -8,25 +8,35 @@ use App\Http\Requests\Delivery\UpdateDeliveryRequest;
 use App\Http\Requests\Delivery\UpdateStatusRequest;
 use App\Http\Requests\Delivery\UploadProofRequest;
 use App\Http\Resources\DeliveryResource;
-use App\Models\Delivery;
 use App\Models\Sale;
 use App\Models\User;
+use App\Repositories\Contracts\DeliveryRepositoryInterface;
+use App\Repositories\Criteria\FilterByColumn;
+use App\Repositories\Criteria\FilterByDateRange;
+use App\Repositories\Criteria\OrderBy;
+use App\Repositories\Criteria\SearchMultipleColumns;
+use App\Repositories\Criteria\WithRelations;
 use App\Services\DeliveryService;
 use App\Traits\ApiResponse;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class DeliveryController extends Controller
 {
     use ApiResponse;
 
     protected DeliveryService $deliveryService;
+    protected DeliveryRepositoryInterface $deliveryRepository;
 
-    public function __construct(DeliveryService $deliveryService)
-    {
+    public function __construct(
+        DeliveryService $deliveryService,
+        DeliveryRepositoryInterface $deliveryRepository
+    ) {
         $this->deliveryService = $deliveryService;
+        $this->deliveryRepository = $deliveryRepository;
     }
 
     /**
@@ -35,48 +45,68 @@ class DeliveryController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = $request->input('per_page', 15);
-        $storeId = auth()->user()->store_id;
 
-        $query = Delivery::where('store_id', $storeId)
-            ->with(['sale', 'customer', 'deliveryItems.product', 'assignedToUser']);
+        // Apply eager loading
+        $this->deliveryRepository->pushCriteria(
+            new WithRelations(['sale', 'customer', 'deliveryItems.product', 'assignedToUser'])
+        );
 
         // Search by delivery number
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where('delivery_number', 'LIKE', "%{$search}%");
+            $this->deliveryRepository->pushCriteria(
+                new SearchMultipleColumns($request->input('search'), ['delivery_number'])
+            );
         }
 
         // Filter by status
         if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
+            $this->deliveryRepository->pushCriteria(
+                new FilterByColumn('status', $request->input('status'))
+            );
         }
 
         // Filter by customer
         if ($request->filled('customer_id')) {
             $customer = \App\Models\Customer::where('uuid', $request->input('customer_id'))->first();
             if ($customer) {
-                $query->where('customer_id', $customer->id);
+                $this->deliveryRepository->pushCriteria(
+                    new FilterByColumn('customer_id', $customer->id)
+                );
             }
         }
 
         // Filter by date range
-        if ($request->filled('date_from')) {
-            $query->whereDate('scheduled_date', '>=', $request->input('date_from'));
-        }
-
-        if ($request->filled('date_to')) {
-            $query->whereDate('scheduled_date', '<=', $request->input('date_to'));
+        if ($request->filled('date_from') && $request->filled('date_to')) {
+            $this->deliveryRepository->pushCriteria(
+                new FilterByDateRange(
+                    'scheduled_date',
+                    Carbon::parse($request->input('date_from')),
+                    Carbon::parse($request->input('date_to'))
+                )
+            );
+        } elseif ($request->filled('date_from')) {
+            $this->deliveryRepository->pushCriteria(
+                new FilterByColumn('scheduled_date', $request->input('date_from'), '>=')
+            );
+        } elseif ($request->filled('date_to')) {
+            $this->deliveryRepository->pushCriteria(
+                new FilterByColumn('scheduled_date', $request->input('date_to'), '<=')
+            );
         }
 
         // Filter by driver
         if ($request->filled('driver_id')) {
-            $query->where('assigned_to', $request->input('driver_id'));
+            $this->deliveryRepository->pushCriteria(
+                new FilterByColumn('assigned_to', $request->input('driver_id'))
+            );
         }
 
         // Order by scheduled date descending
-        $query->orderBy('scheduled_date', 'desc');
+        $this->deliveryRepository->pushCriteria(
+            new OrderBy('scheduled_date', 'desc')
+        );
 
-        $deliveries = $query->paginate($perPage);
+        $deliveries = $this->deliveryRepository->paginate($perPage);
 
         return $this->paginatedResponse(
             $deliveries->setCollection(
@@ -117,16 +147,17 @@ class DeliveryController extends Controller
     public function show(string $uuid): JsonResponse
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->with([
+            $this->deliveryRepository->pushCriteria(
+                new WithRelations([
                     'sale',
                     'customer',
                     'deliveryItems.product.unit',
                     'deliveryItems.saleItem',
                     'assignedToUser'
                 ])
-                ->firstOrFail();
+            );
+
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             return $this->successResponse(
                 new DeliveryResource($delivery),
@@ -143,9 +174,7 @@ class DeliveryController extends Controller
     public function update(UpdateDeliveryRequest $request, string $uuid): JsonResponse
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->firstOrFail();
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             $delivery = $this->deliveryService->updateDelivery($delivery, $request->validated());
 
@@ -164,9 +193,7 @@ class DeliveryController extends Controller
     public function destroy(string $uuid): JsonResponse
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->firstOrFail();
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             // Only allow deletion if status is 'preparing'
             if ($delivery->status !== 'preparing') {
@@ -194,9 +221,7 @@ class DeliveryController extends Controller
     public function updateStatus(UpdateStatusRequest $request, string $uuid): JsonResponse
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->firstOrFail();
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             $extraData = [];
             if ($request->filled('delivered_at')) {
@@ -228,9 +253,7 @@ class DeliveryController extends Controller
     public function uploadProof(UploadProofRequest $request, string $uuid): JsonResponse
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->firstOrFail();
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             $delivery = $this->deliveryService->uploadProofOfDelivery(
                 $delivery,
@@ -255,9 +278,7 @@ class DeliveryController extends Controller
     public function downloadProof(string $uuid)
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->firstOrFail();
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             if (!$delivery->proof_of_delivery_path) {
                 return $this->errorResponse('No proof of delivery available', null, 404);
@@ -279,9 +300,8 @@ class DeliveryController extends Controller
     public function receipt(string $uuid): JsonResponse
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->with([
+            $this->deliveryRepository->pushCriteria(
+                new WithRelations([
                     'sale',
                     'customer',
                     'deliveryItems.product.unit',
@@ -290,7 +310,9 @@ class DeliveryController extends Controller
                     'store',
                     'branch'
                 ])
-                ->firstOrFail();
+            );
+
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             $receiptData = [
                 'store' => [
@@ -360,9 +382,8 @@ class DeliveryController extends Controller
     public function receiptPdf(string $uuid)
     {
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->with([
+            $this->deliveryRepository->pushCriteria(
+                new WithRelations([
                     'sale',
                     'customer',
                     'deliveryItems.product.unit',
@@ -371,7 +392,9 @@ class DeliveryController extends Controller
                     'store',
                     'branch'
                 ])
-                ->firstOrFail();
+            );
+
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             $data = [
                 'delivery' => $delivery,
@@ -395,9 +418,7 @@ class DeliveryController extends Controller
         ]);
 
         try {
-            $delivery = Delivery::where('uuid', $uuid)
-                ->where('store_id', auth()->user()->store_id)
-                ->firstOrFail();
+            $delivery = $this->deliveryRepository->findByUuidOrFail($uuid);
 
             $driver = User::where('id', $request->driver_id)
                 ->where('store_id', auth()->user()->store_id)
@@ -420,8 +441,7 @@ class DeliveryController extends Controller
     public function todaySchedule(): JsonResponse
     {
         try {
-            $store = auth()->user()->store;
-            $deliveries = $this->deliveryService->getDeliveriesForToday($store);
+            $deliveries = $this->deliveryRepository->getTodaySchedule();
 
             return $this->successResponse(
                 DeliveryResource::collection($deliveries),

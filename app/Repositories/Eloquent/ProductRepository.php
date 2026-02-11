@@ -145,4 +145,72 @@ class ProductRepository extends BaseRepository implements ProductRepositoryInter
             ->orderBy('current_stock', 'desc')
             ->paginate($perPage);
     }
+
+    public function getInventoryValuationByCategory(): Collection
+    {
+        return $this->newQuery()
+            ->where('is_active', true)
+            ->join('categories', 'products.category_id', '=', 'categories.id')
+            ->selectRaw('
+                categories.id as category_id,
+                categories.name as category_name,
+                COUNT(products.id) as product_count,
+                SUM(products.current_stock) as total_units,
+                SUM(products.current_stock * products.cost_price) as total_value
+            ')
+            ->groupBy('categories.id', 'categories.name')
+            ->orderByDesc('total_value')
+            ->get();
+    }
+
+    public function getLowStockReport(): Collection
+    {
+        return $this->newQuery()
+            ->where('is_active', true)
+            ->where('track_inventory', true)
+            ->whereColumn('current_stock', '<=', 'reorder_point')
+            ->with(['category:id,name', 'unit:id,name,abbreviation'])
+            ->orderByRaw('(current_stock / NULLIF(reorder_point, 0)) ASC')
+            ->get();
+    }
+
+    public function getDeadStockReport(int $days = 90): Collection
+    {
+        $cutoffDate = Carbon::now()->subDays($days);
+
+        return $this->newQuery()
+            ->with(['category:id,name', 'unit:id,name,abbreviation'])
+            ->where('is_active', true)
+            ->where('current_stock', '>', 0)
+            ->whereDoesntHave('saleItems', function ($query) use ($cutoffDate) {
+                $query->whereHas('sale', function ($q) use ($cutoffDate) {
+                    $q->where('sale_date', '>=', $cutoffDate)
+                      ->where('status', 'completed');
+                });
+            })
+            ->get();
+    }
+
+    public function getProductProfitability(Carbon $from, Carbon $to, int $limit = 50): Collection
+    {
+        return DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->join('products', 'sale_items.product_id', '=', 'products.id')
+            ->where('sales.store_id', auth()->user()->store_id)
+            ->where('sales.status', 'completed')
+            ->whereBetween('sales.sale_date', [$from, $to])
+            ->select(
+                'products.id as product_id',
+                'products.uuid as product_uuid',
+                'products.name as product_name',
+                'products.sku as product_sku',
+                DB::raw('SUM(sale_items.quantity) as total_quantity'),
+                DB::raw('SUM(sale_items.line_total) as total_revenue'),
+                DB::raw('SUM(sale_items.quantity * products.cost_price) as total_cost')
+            )
+            ->groupBy('products.id', 'products.uuid', 'products.name', 'products.sku')
+            ->orderByDesc(DB::raw('SUM(sale_items.line_total) - SUM(sale_items.quantity * products.cost_price)'))
+            ->limit($limit)
+            ->get();
+    }
 }

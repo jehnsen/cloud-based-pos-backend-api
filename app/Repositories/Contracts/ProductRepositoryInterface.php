@@ -62,4 +62,24 @@ interface ProductRepositoryInterface extends BaseRepositoryInterface
      * Get dead stock products (no sales in X days)
      */
     public function getDeadStock(int $days, int $perPage = 15): LengthAwarePaginator;
+
+    /**
+     * Get inventory valuation by category
+     */
+    public function getInventoryValuationByCategory(): Collection;
+
+    /**
+     * Get low stock report with additional calculations
+     */
+    public function getLowStockReport(): Collection;
+
+    /**
+     * Get dead stock report (detailed version without pagination)
+     */
+    public function getDeadStockReport(int $days = 90): Collection;
+
+    /**
+     * Get product profitability analysis
+     */
+    public function getProductProfitability(Carbon $from, Carbon $to, int $limit = 50): Collection;
 }

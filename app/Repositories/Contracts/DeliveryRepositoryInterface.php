@@ -43,4 +43,9 @@ interface DeliveryRepositoryInterface extends BaseRepositoryInterface
      * Get upcoming deliveries in next N days
      */
     public function getUpcoming(int $days): Collection;
+
+    /**
+     * Get deliveries for this week by status
+     */
+    public function getThisWeekByStatus(array $statuses, int $limit = 10): Collection;
 }

@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\Store;
 use App\Models\Branch;
+use App\Repositories\Contracts\ProductRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Collection;
@@ -13,6 +14,12 @@ use Carbon\Carbon;
 
 class InventoryService
 {
+    protected ProductRepositoryInterface $productRepo;
+
+    public function __construct(ProductRepositoryInterface $productRepo)
+    {
+        $this->productRepo = $productRepo;
+    }
     /**
      * Adjust product stock with audit trail.
      *
@@ -131,13 +138,9 @@ class InventoryService
      */
     public function getLowStockProducts(Store $store): Collection
     {
-        return Product::where('store_id', $store->id)
-            ->where('is_active', true)
-            ->where('track_inventory', true)
-            ->whereColumn('current_stock', '<=', 'reorder_point')
-            ->with(['category', 'unit'])
-            ->orderBy('current_stock', 'asc')
-            ->get();
+        // Use repository's getLowStock with high limit to get all products
+        // The store filtering is handled by the repository's multi-tenancy
+        return $this->productRepo->getLowStock(PHP_INT_MAX);
     }
 
     /**
@@ -149,20 +152,10 @@ class InventoryService
      */
     public function getDeadStockProducts(Store $store, int $days = 90): Collection
     {
-        $cutoffDate = Carbon::now()->subDays($days);
-
-        return Product::where('store_id', $store->id)
-            ->where('is_active', true)
-            ->where('current_stock', '>', 0)
-            ->whereDoesntHave('saleItems', function ($query) use ($cutoffDate) {
-                $query->whereHas('sale', function ($saleQuery) use ($cutoffDate) {
-                    $saleQuery->where('created_at', '>=', $cutoffDate)
-                        ->where('status', '!=', 'voided');
-                });
-            })
-            ->with(['category', 'unit'])
-            ->orderBy('current_stock', 'desc')
-            ->get();
+        // Repository's getDeadStock returns paginated results
+        // Get all results by using a large per_page value and extracting the items
+        $paginator = $this->productRepo->getDeadStock($days, PHP_INT_MAX);
+        return $paginator->getCollection();
     }
 
     /**
@@ -204,7 +197,7 @@ class InventoryService
         $available = true;
 
         foreach ($items as $item) {
-            $product = Product::where('uuid', $item['product_id'])->first();
+            $product = $this->productRepo->findByUuid($item['product_id']);
 
             if (!$product) {
                 $errors[] = "Product {$item['product_id']} not found";
@@ -238,24 +231,13 @@ class InventoryService
      */
     public function getInventoryValuation(Store $store): array
     {
-        $products = Product::where('store_id', $store->id)
-            ->where('is_active', true)
-            ->where('track_inventory', true)
-            ->get();
-
-        $totalValue = 0;
-        $totalItems = 0;
-
-        foreach ($products as $product) {
-            $totalValue += ($product->current_stock * $product->cost_price);
-            $totalItems += $product->current_stock;
-        }
+        $valuation = $this->productRepo->getInventoryValuation();
 
         return [
-            'total_value' => (int) $totalValue, // in centavos
-            'total_value_pesos' => $totalValue / 100, // in pesos
-            'product_count' => $products->count(),
-            'total_items' => $totalItems,
+            'total_value' => $valuation['total_cost_value'], // in centavos
+            'total_value_pesos' => $valuation['total_cost_value'] / 100, // in pesos
+            'product_count' => $valuation['total_products'],
+            'total_items' => $valuation['total_units'],
         ];
     }
 
@@ -277,7 +259,7 @@ class InventoryService
 
         DB::transaction(function () use ($counts, $branch, &$adjustments, &$summary) {
             foreach ($counts as $count) {
-                $product = Product::where('uuid', $count['product_uuid'])->first();
+                $product = $this->productRepo->findByUuid($count['product_uuid']);
 
                 if (!$product) {
                     continue;
@@ -327,7 +309,7 @@ class InventoryService
 
         DB::transaction(function () use ($updates, $adjustmentType, &$adjustments) {
             foreach ($updates as $update) {
-                $product = Product::where('uuid', $update['product_uuid'])->first();
+                $product = $this->productRepo->findByUuid($update['product_uuid']);
 
                 if (!$product) {
                     continue;

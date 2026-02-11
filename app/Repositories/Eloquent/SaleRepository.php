@@ -140,11 +140,12 @@ class SaleRepository extends BaseRepository implements SaleRepositoryInterface
             ->whereBetween('sales.sale_date', [$from, $to])
             ->select(
                 'categories.name as category_name',
+                'categories.slug as category_slug',
                 DB::raw('COUNT(DISTINCT sales.id) as sale_count'),
                 DB::raw('SUM(sale_items.quantity) as total_quantity'),
                 DB::raw('SUM(sale_items.line_total) as total_amount')
             )
-            ->groupBy('categories.id', 'categories.name')
+            ->groupBy('categories.id', 'categories.name', 'categories.slug')
             ->orderBy('total_amount', 'desc')
             ->get();
     }
@@ -197,5 +198,158 @@ class SaleRepository extends BaseRepository implements SaleRepositoryInterface
             ->whereDate('sale_date', Carbon::today())
             ->where('status', '!=', 'voided')
             ->sum('total_amount');
+    }
+
+    public function findByUuidWithRelations(string $uuid, array $relations = []): ?Sale
+    {
+        $query = $this->newQuery()->where('uuid', $uuid);
+
+        if (!empty($relations)) {
+            $query->with($relations);
+        }
+
+        return $query->first();
+    }
+
+    public function getSalesTrend(Carbon $from, Carbon $to): Collection
+    {
+        return $this->newQuery()
+            ->whereBetween('sale_date', [$from, $to])
+            ->where('status', '!=', 'voided')
+            ->selectRaw('DATE(sale_date) as date, SUM(total_amount) as total, COUNT(*) as transactions')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+    }
+
+    public function getUnpaidByCustomer(int $customerId, ?array $uuids = null): Collection
+    {
+        $query = $this->newQuery()
+            ->where('customer_id', $customerId)
+            ->where('payment_status', '!=', 'paid');
+
+        if ($uuids && count($uuids) > 0) {
+            $query->whereIn('uuid', $uuids);
+        }
+
+        return $query->orderBy('sale_date', 'asc')->get();
+    }
+
+    public function getDailySalesReport(Carbon $date): array
+    {
+        $startOfDay = $date->copy()->startOfDay();
+        $endOfDay = $date->copy()->endOfDay();
+
+        // Hourly breakdown
+        $hourlySales = $this->newQuery()
+            ->where('status', 'completed')
+            ->whereBetween('sale_date', [$startOfDay, $endOfDay])
+            ->selectRaw('
+                HOUR(sale_date) as hour,
+                COUNT(*) as transaction_count,
+                SUM(total_amount) as total_sales
+            ')
+            ->groupBy('hour')
+            ->orderBy('hour')
+            ->get();
+
+        // Overall summary
+        $summary = $this->newQuery()
+            ->where('status', 'completed')
+            ->whereBetween('sale_date', [$startOfDay, $endOfDay])
+            ->selectRaw('
+                COUNT(*) as transaction_count,
+                SUM(total_amount) as total_sales,
+                SUM(discount_amount) as total_discounts,
+                AVG(total_amount) as average_transaction
+            ')
+            ->first();
+
+        return [
+            'hourly_breakdown' => $hourlySales,
+            'summary' => $summary,
+        ];
+    }
+
+    public function getSalesSummaryGrouped(Carbon $from, Carbon $to, string $groupBy = 'day'): array
+    {
+        // Determine date format for grouping
+        $dateFormat = match ($groupBy) {
+            'week' => '%Y-%u',
+            'month' => '%Y-%m',
+            default => '%Y-%m-%d',
+        };
+
+        // Get grouped sales data
+        $salesData = $this->newQuery()
+            ->where('status', 'completed')
+            ->whereBetween('sale_date', [$from, $to])
+            ->selectRaw("
+                DATE_FORMAT(sale_date, '{$dateFormat}') as period,
+                COUNT(*) as transaction_count,
+                SUM(total_amount) as total_sales,
+                SUM(discount_amount) as total_discounts,
+                AVG(total_amount) as average_transaction
+            ")
+            ->groupBy('period')
+            ->orderBy('period')
+            ->get();
+
+        // Overall summary
+        $overallSummary = $this->newQuery()
+            ->where('status', 'completed')
+            ->whereBetween('sale_date', [$from, $to])
+            ->selectRaw('
+                COUNT(*) as total_transactions,
+                SUM(total_amount) as total_sales,
+                SUM(discount_amount) as total_discounts,
+                AVG(total_amount) as average_transaction
+            ')
+            ->first();
+
+        return [
+            'data' => $salesData,
+            'summary' => $overallSummary,
+        ];
+    }
+
+    public function getSalesByCustomerReport(Carbon $from, Carbon $to, int $limit = 50): Collection
+    {
+        return $this->newQuery()
+            ->where('status', 'completed')
+            ->whereNotNull('customer_id')
+            ->whereBetween('sale_date', [$from, $to])
+            ->selectRaw('
+                customer_id,
+                COUNT(*) as transaction_count,
+                SUM(total_amount) as total_purchases,
+                AVG(total_amount) as average_order_value,
+                MAX(sale_date) as last_purchase_date
+            ')
+            ->with('customer:id,uuid,code,name,email,phone')
+            ->groupBy('customer_id')
+            ->orderByDesc('total_purchases')
+            ->limit($limit)
+            ->get();
+    }
+
+    public function getPaymentMethodBreakdown(Carbon $from, Carbon $to): array
+    {
+        $startOfDay = $from->copy()->startOfDay();
+        $endOfDay = $to->copy()->endOfDay();
+
+        return DB::table('sale_payments')
+            ->join('sales', 'sale_payments.sale_id', '=', 'sales.id')
+            ->where('sales.store_id', Auth::user()->store_id)
+            ->where('sales.status', 'completed')
+            ->whereBetween('sales.sale_date', [$startOfDay, $endOfDay])
+            ->select(
+                'sale_payments.method',
+                DB::raw('COUNT(*) as count'),
+                DB::raw('SUM(sale_payments.amount) as total')
+            )
+            ->groupBy('sale_payments.method')
+            ->get()
+            ->toArray();
     }
 }

@@ -3,16 +3,31 @@
 namespace App\Services;
 
 use App\Models\Store;
-use App\Models\Sale;
-use App\Models\Product;
-use App\Models\Customer;
-use App\Models\Delivery;
-use Illuminate\Support\Facades\DB;
+use App\Repositories\Contracts\SaleRepositoryInterface;
+use App\Repositories\Contracts\ProductRepositoryInterface;
+use App\Repositories\Contracts\CustomerRepositoryInterface;
+use App\Repositories\Contracts\DeliveryRepositoryInterface;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class DashboardService
 {
+    protected SaleRepositoryInterface $saleRepo;
+    protected ProductRepositoryInterface $productRepo;
+    protected CustomerRepositoryInterface $customerRepo;
+    protected DeliveryRepositoryInterface $deliveryRepo;
+
+    public function __construct(
+        SaleRepositoryInterface $saleRepo,
+        ProductRepositoryInterface $productRepo,
+        CustomerRepositoryInterface $customerRepo,
+        DeliveryRepositoryInterface $deliveryRepo
+    ) {
+        $this->saleRepo = $saleRepo;
+        $this->productRepo = $productRepo;
+        $this->customerRepo = $customerRepo;
+        $this->deliveryRepo = $deliveryRepo;
+    }
     /**
      * Get today's summary statistics.
      *
@@ -24,34 +39,27 @@ class DashboardService
         $today = Carbon::today();
 
         return Cache::remember("dashboard_summary_{$store->id}_" . $today->format('Y-m-d'), 300, function () use ($store, $today) {
-            // Today's sales
-            $salesData = Sale::where('store_id', $store->id)
-                ->whereDate('created_at', $today)
-                ->where('status', '!=', 'voided')
-                ->selectRaw('COUNT(*) as transaction_count, SUM(total_amount) as total_sales')
-                ->first();
+            // Today's sales - use repository methods
+            $transactionCount = $this->saleRepo->getTodayTransactionCount();
+            $totalSales = $this->saleRepo->getTodayTotalSales();
 
             // Low stock products count
-            $lowStockCount = Product::where('store_id', $store->id)
-                ->where('is_active', true)
-                ->where('track_inventory', true)
-                ->whereColumn('current_stock', '<=', 'reorder_point')
-                ->count();
+            $lowStockCount = $this->productRepo->getLowStock(999999)->count();
 
             // Outstanding credit
-            $outstandingCredit = Customer::where('store_id', $store->id)
-                ->sum('total_outstanding');
+            $creditStats = $this->customerRepo->getCreditOverviewStats();
+            $outstandingCredit = $creditStats['total_outstanding'];
 
-            // Pending deliveries
-            $pendingDeliveries = Delivery::where('store_id', $store->id)
+            // Pending deliveries - using upcoming method to get pending deliveries
+            $pendingDeliveries = $this->deliveryRepo->getUpcoming(365)
                 ->whereIn('status', ['preparing', 'dispatched', 'in_transit'])
                 ->count();
 
             return [
                 'today_sales' => [
-                    'amount' => (int) ($salesData->total_sales ?? 0),
-                    'amount_pesos' => ($salesData->total_sales ?? 0) / 100,
-                    'transaction_count' => (int) ($salesData->transaction_count ?? 0),
+                    'amount' => (int) $totalSales,
+                    'amount_pesos' => $totalSales / 100,
+                    'transaction_count' => (int) $transactionCount,
                 ],
                 'low_stock_count' => $lowStockCount,
                 'outstanding_credit' => [
@@ -73,15 +81,10 @@ class DashboardService
     public function getSalesTrend(Store $store, int $days = 30): array
     {
         $startDate = Carbon::today()->subDays($days - 1);
+        $endDate = Carbon::today();
 
-        return Cache::remember("sales_trend_{$store->id}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($store, $startDate) {
-            $sales = Sale::where('store_id', $store->id)
-                ->whereDate('created_at', '>=', $startDate)
-                ->where('status', '!=', 'voided')
-                ->selectRaw('DATE(created_at) as date, SUM(total_amount) as total, COUNT(*) as transactions')
-                ->groupBy('date')
-                ->orderBy('date')
-                ->get();
+        return Cache::remember("sales_trend_{$store->id}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($startDate, $endDate) {
+            $sales = $this->saleRepo->getSalesTrend($startDate, $endDate);
 
             return $sales->map(function ($sale) {
                 return [
@@ -105,25 +108,10 @@ class DashboardService
     public function getTopProducts(Store $store, int $limit = 10, int $days = 30): array
     {
         $startDate = Carbon::today()->subDays($days - 1);
+        $endDate = Carbon::today();
 
-        return Cache::remember("top_products_{$store->id}_{$limit}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($store, $startDate, $limit) {
-            return DB::table('sale_items')
-                ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-                ->join('products', 'sale_items.product_id', '=', 'products.id')
-                ->where('sales.store_id', $store->id)
-                ->whereDate('sales.created_at', '>=', $startDate)
-                ->where('sales.status', '!=', 'voided')
-                ->select(
-                    'products.uuid',
-                    'products.name',
-                    'products.sku',
-                    DB::raw('SUM(sale_items.quantity) as total_quantity'),
-                    DB::raw('SUM(sale_items.line_total) as total_revenue')
-                )
-                ->groupBy('products.id', 'products.uuid', 'products.name', 'products.sku')
-                ->orderByDesc('total_quantity')
-                ->limit($limit)
-                ->get()
+        return Cache::remember("top_products_{$store->id}_{$limit}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($startDate, $endDate, $limit) {
+            return $this->saleRepo->getTopProducts($limit, $startDate, $endDate)
                 ->map(function ($product) {
                     return [
                         'uuid' => $product->uuid,
@@ -148,29 +136,16 @@ class DashboardService
     public function getSalesByCategory(Store $store, int $days = 30): array
     {
         $startDate = Carbon::today()->subDays($days - 1);
+        $endDate = Carbon::today();
 
-        return Cache::remember("sales_by_category_{$store->id}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($store, $startDate) {
-            return DB::table('sale_items')
-                ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
-                ->join('products', 'sale_items.product_id', '=', 'products.id')
-                ->join('categories', 'products.category_id', '=', 'categories.id')
-                ->where('sales.store_id', $store->id)
-                ->whereDate('sales.created_at', '>=', $startDate)
-                ->where('sales.status', '!=', 'voided')
-                ->select(
-                    'categories.name',
-                    'categories.slug',
-                    DB::raw('SUM(sale_items.line_total) as total')
-                )
-                ->groupBy('categories.id', 'categories.name', 'categories.slug')
-                ->orderByDesc('total')
-                ->get()
+        return Cache::remember("sales_by_category_{$store->id}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($startDate, $endDate) {
+            return $this->saleRepo->getSalesByCategory($startDate, $endDate)
                 ->map(function ($category) {
                     return [
-                        'name' => $category->name,
-                        'slug' => $category->slug,
-                        'total' => (int) $category->total,
-                        'total_pesos' => $category->total / 100,
+                        'name' => $category->category_name,
+                        'slug' => $category->category_slug,
+                        'total' => (int) $category->total_amount,
+                        'total_pesos' => $category->total_amount / 100,
                     ];
                 })
                 ->toArray();
@@ -186,11 +161,7 @@ class DashboardService
      */
     public function getRecentTransactions(Store $store, int $limit = 10)
     {
-        return Sale::where('store_id', $store->id)
-            ->with(['customer:uuid,name', 'user:id,name', 'branch:id,name'])
-            ->orderBy('created_at', 'desc')
-            ->limit($limit)
-            ->get();
+        return $this->saleRepo->getRecent($limit);
     }
 
     /**
@@ -201,14 +172,7 @@ class DashboardService
      */
     public function getStockAlerts(Store $store)
     {
-        return Product::where('store_id', $store->id)
-            ->where('is_active', true)
-            ->where('track_inventory', true)
-            ->whereColumn('current_stock', '<=', 'reorder_point')
-            ->with(['category:id,name', 'unit:id,name,abbreviation'])
-            ->orderBy('current_stock', 'asc')
-            ->limit(20)
-            ->get();
+        return $this->productRepo->getLowStock(20);
     }
 
     /**
@@ -219,16 +183,7 @@ class DashboardService
      */
     public function getUpcomingDeliveries(Store $store)
     {
-        $startOfWeek = Carbon::now()->startOfWeek();
-        $endOfWeek = Carbon::now()->endOfWeek();
-
-        return Delivery::where('store_id', $store->id)
-            ->whereBetween('scheduled_date', [$startOfWeek, $endOfWeek])
-            ->whereIn('status', ['preparing', 'dispatched', 'in_transit'])
-            ->with(['sale:id,uuid,sale_number', 'customer:id,uuid,name'])
-            ->orderBy('scheduled_date')
-            ->limit(10)
-            ->get();
+        return $this->deliveryRepo->getThisWeekByStatus(['preparing', 'dispatched', 'in_transit'], 10);
     }
 
     /**
@@ -242,25 +197,10 @@ class DashboardService
     public function getTopCustomers(Store $store, int $limit = 5, int $days = 30): array
     {
         $startDate = Carbon::today()->subDays($days - 1);
+        $endDate = Carbon::today();
 
-        return Cache::remember("top_customers_{$store->id}_{$limit}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($store, $startDate, $limit) {
-            return DB::table('sales')
-                ->join('customers', 'sales.customer_id', '=', 'customers.id')
-                ->where('sales.store_id', $store->id)
-                ->whereDate('sales.created_at', '>=', $startDate)
-                ->where('sales.status', '!=', 'voided')
-                ->whereNotNull('sales.customer_id')
-                ->select(
-                    'customers.uuid',
-                    'customers.name',
-                    'customers.type',
-                    DB::raw('COUNT(sales.id) as transaction_count'),
-                    DB::raw('SUM(sales.total_amount) as total_purchases')
-                )
-                ->groupBy('customers.id', 'customers.uuid', 'customers.name', 'customers.type')
-                ->orderByDesc('total_purchases')
-                ->limit($limit)
-                ->get()
+        return Cache::remember("top_customers_{$store->id}_{$limit}_{$days}_" . Carbon::today()->format('Y-m-d'), 900, function () use ($startDate, $endDate, $limit) {
+            return $this->customerRepo->getTopCustomers($limit, $startDate, $endDate)
                 ->map(function ($customer) {
                     return [
                         'uuid' => $customer->uuid,

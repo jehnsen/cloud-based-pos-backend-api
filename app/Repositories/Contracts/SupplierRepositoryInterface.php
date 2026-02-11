@@ -46,5 +46,15 @@ interface SupplierRepositoryInterface extends BaseRepositoryInterface
     /**
      * Get price history for a product from this supplier
      */
-    public function getPriceHistory(string $supplierUuid, string $productUuid, int $months = 12): Collection;
+    public function getPriceHistory(string $supplierUuid, ?string $productUuid = null, ?string $fromDate = null, ?string $toDate = null): Collection;
+
+    /**
+     * Get supplier statistics (total purchases, last purchase date)
+     */
+    public function getSupplierStatistics(string $supplierUuid): array;
+
+    /**
+     * Get price comparison report across suppliers for products
+     */
+    public function getPriceComparisonReport(?int $productId = null): Collection;
 }

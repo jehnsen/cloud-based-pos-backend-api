@@ -98,10 +98,11 @@ class CustomerRepository extends BaseRepository implements CustomerRepositoryInt
                 'customers.uuid',
                 'customers.name',
                 'customers.code',
+                'customers.type',
                 DB::raw('COUNT(sales.id) as transaction_count'),
                 DB::raw('SUM(sales.total_amount) as total_purchases')
             )
-            ->groupBy('customers.id', 'customers.uuid', 'customers.name', 'customers.code')
+            ->groupBy('customers.id', 'customers.uuid', 'customers.name', 'customers.code', 'customers.type')
             ->orderBy('total_purchases', 'desc')
             ->limit($limit)
             ->get();

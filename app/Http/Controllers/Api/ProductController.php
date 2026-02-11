@@ -10,6 +10,13 @@ use App\Http\Requests\Product\UpdateProductRequest;
 use App\Http\Resources\ProductCollection;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Repositories\Contracts\ProductRepositoryInterface;
+use App\Repositories\Criteria\ActiveOnly;
+use App\Repositories\Criteria\FilterByColumn;
+use App\Repositories\Criteria\LowStockProducts;
+use App\Repositories\Criteria\OrderBy;
+use App\Repositories\Criteria\SearchMultipleColumns;
+use App\Repositories\Criteria\WithRelations;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,46 +28,55 @@ class ProductController extends Controller
 {
     use ApiResponse;
 
+    protected ProductRepositoryInterface $productRepo;
+
+    public function __construct(ProductRepositoryInterface $productRepo)
+    {
+        $this->productRepo = $productRepo;
+    }
+
     /**
      * Display a paginated listing of products.
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Product::with(['category', 'unit']);
+        // Apply eager loading
+        $this->productRepo->pushCriteria(new WithRelations(['category', 'unit']));
 
         // Search by name, sku, or barcode
         if ($request->has('q')) {
-            $search = $request->input('q');
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('sku', 'LIKE', "%{$search}%")
-                    ->orWhere('barcode', 'LIKE', "%{$search}%");
-            });
+            $this->productRepo->pushCriteria(
+                new SearchMultipleColumns($request->input('q'), ['name', 'sku', 'barcode'])
+            );
         }
 
         // Filter by category
         if ($request->has('category_id')) {
-            $query->where('category_id', $request->input('category_id'));
+            $this->productRepo->pushCriteria(
+                new FilterByColumn('category_id', $request->input('category_id'))
+            );
         }
 
         // Filter by active status
         if ($request->has('is_active')) {
-            $query->where('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN));
+            $this->productRepo->pushCriteria(
+                new FilterByColumn('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN))
+            );
         }
 
         // Filter by low stock
         if ($request->boolean('low_stock')) {
-            $query->whereColumn('current_stock', '<=', 'reorder_point');
+            $this->productRepo->pushCriteria(new LowStockProducts());
         }
 
         // Sorting
         $sortBy = $request->input('sort_by', 'name');
         $sortOrder = $request->input('sort_order', 'asc');
-        $query->orderBy($sortBy, $sortOrder);
+        $this->productRepo->pushCriteria(new OrderBy($sortBy, $sortOrder));
 
         // Pagination
         $perPage = $request->input('per_page', 15);
-        $products = $query->paginate($perPage);
+        $products = $this->productRepo->paginate($perPage);
 
         return $this->paginatedResponse(
             $products->setCollection(
@@ -92,7 +108,7 @@ class ProductController extends Controller
             }
 
             // Create product
-            $product = Product::create($data);
+            $product = $this->productRepo->create($data);
 
             DB::commit();
 
@@ -117,9 +133,8 @@ class ProductController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $product = Product::with(['category', 'unit', 'stockByBranch.branch'])
-            ->where('uuid', $uuid)
-            ->firstOrFail();
+        $this->productRepo->pushCriteria(new WithRelations(['category', 'unit', 'stockByBranch.branch']));
+        $product = $this->productRepo->findByUuidOrFail($uuid);
 
         return $this->successResponse(
             new ProductResource($product),
@@ -135,7 +150,7 @@ class ProductController extends Controller
         try {
             DB::beginTransaction();
 
-            $product = Product::where('uuid', $uuid)->firstOrFail();
+            $product = $this->productRepo->findByUuidOrFail($uuid);
             $data = $request->validated();
 
             // Handle image upload
@@ -175,7 +190,7 @@ class ProductController extends Controller
     public function destroy(string $uuid): JsonResponse
     {
         try {
-            $product = Product::where('uuid', $uuid)->firstOrFail();
+            $product = $this->productRepo->findByUuidOrFail($uuid);
             $product->delete();
 
             return $this->successResponse(
@@ -202,14 +217,14 @@ class ProductController extends Controller
 
         $search = $request->input('q');
 
-        $products = Product::where('is_active', true)
-            ->where(function ($query) use ($search) {
-                $query->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('sku', 'LIKE', "%{$search}%")
-                    ->orWhere('barcode', 'LIKE', "%{$search}%");
-            })
-            ->limit(20)
-            ->get(['uuid', 'name', 'sku', 'barcode', 'retail_price', 'current_stock', 'image_path']);
+        // Apply criteria for active products and search
+        $this->productRepo->pushCriteria(new ActiveOnly());
+        $this->productRepo->pushCriteria(
+            new SearchMultipleColumns($search, ['name', 'sku', 'barcode'])
+        );
+
+        // Get first 20 results
+        $products = $this->productRepo->paginate(20, ['uuid', 'name', 'sku', 'barcode', 'retail_price', 'current_stock', 'image_path']);
 
         $results = $products->map(function ($product) {
             return [
@@ -234,10 +249,7 @@ class ProductController extends Controller
      */
     public function barcode(string $barcode): JsonResponse
     {
-        $product = Product::with(['category', 'unit'])
-            ->where('barcode', $barcode)
-            ->where('is_active', true)
-            ->first();
+        $product = $this->productRepo->findByBarcode($barcode);
 
         if (!$product) {
             return $this->errorResponse(
@@ -260,7 +272,7 @@ class ProductController extends Controller
     public function adjustStock(AdjustStockRequest $request, string $uuid): JsonResponse
     {
         try {
-            $product = Product::where('uuid', $uuid)->firstOrFail();
+            $product = $this->productRepo->findByUuidOrFail($uuid);
             $data = $request->validated();
 
             // For now, we'll do a simple adjustment
@@ -323,7 +335,7 @@ class ProductController extends Controller
      */
     public function stockHistory(Request $request, string $uuid): JsonResponse
     {
-        $product = Product::where('uuid', $uuid)->firstOrFail();
+        $product = $this->productRepo->findByUuidOrFail($uuid);
 
         // Placeholder - will be implemented with InventoryService
         return $this->successResponse(
@@ -337,12 +349,11 @@ class ProductController extends Controller
      */
     public function lowStock(Request $request): JsonResponse
     {
-        $query = Product::with(['category', 'unit'])
-            ->where('is_active', true)
-            ->whereColumn('current_stock', '<=', 'reorder_point');
+        $this->productRepo->pushCriteria(new WithRelations(['category', 'unit']));
+        $this->productRepo->pushCriteria(new LowStockProducts());
 
         $perPage = $request->input('per_page', 15);
-        $products = $query->paginate($perPage);
+        $products = $this->productRepo->paginate($perPage);
 
         return $this->paginatedResponse(
             $products->setCollection(
@@ -364,7 +375,9 @@ class ProductController extends Controller
             $productIds = $data['product_ids'];
             $updates = $data['updates'];
 
-            // Update products
+            // Update products using repository
+            // We need to use raw query for bulk update as repository doesn't have this method yet
+            $this->productRepo->resetCriteria();
             Product::whereIn('uuid', $productIds)->update($updates);
 
             DB::commit();

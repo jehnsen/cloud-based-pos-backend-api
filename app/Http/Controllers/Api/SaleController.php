@@ -9,8 +9,15 @@ use App\Http\Requests\Sale\RefundSaleRequest;
 use App\Http\Requests\Sale\HoldTransactionRequest;
 use App\Http\Resources\SaleResource;
 use App\Http\Resources\ReceiptResource;
-use App\Models\Sale;
 use App\Models\HeldTransaction;
+use App\Repositories\Contracts\SaleRepositoryInterface;
+use App\Repositories\Criteria\FilterByCashierUuid;
+use App\Repositories\Criteria\FilterByCustomerUuid;
+use App\Repositories\Criteria\FilterByDateOnly;
+use App\Repositories\Criteria\FilterByStatus;
+use App\Repositories\Criteria\OrderBy;
+use App\Repositories\Criteria\SearchByColumn;
+use App\Repositories\Criteria\WithRelations;
 use App\Services\SaleService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
@@ -23,10 +30,12 @@ class SaleController extends Controller
     use ApiResponse;
 
     protected SaleService $saleService;
+    protected SaleRepositoryInterface $saleRepository;
 
-    public function __construct(SaleService $saleService)
+    public function __construct(SaleService $saleService, SaleRepositoryInterface $saleRepository)
     {
         $this->saleService = $saleService;
+        $this->saleRepository = $saleRepository;
     }
 
     /**
@@ -44,44 +53,57 @@ class SaleController extends Controller
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $query = Sale::where('store_id', Auth::user()->store_id)
-            ->with(['customer', 'user', 'branch', 'items', 'payments']);
+        // Apply eager loading
+        $this->saleRepository->pushCriteria(
+            new WithRelations(['customer', 'user', 'branch', 'items', 'payments'])
+        );
 
-        // Apply filters
+        // Apply filters using criteria pattern
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $this->saleRepository->pushCriteria(
+                new FilterByStatus($request->status)
+            );
         }
 
         if ($request->filled('customer_id')) {
-            $query->whereHas('customer', function ($q) use ($request) {
-                $q->where('uuid', $request->customer_id);
-            });
+            $this->saleRepository->pushCriteria(
+                new FilterByCustomerUuid($request->customer_id)
+            );
         }
 
         if ($request->filled('date_from')) {
-            $query->whereDate('sale_date', '>=', $request->date_from);
+            $this->saleRepository->pushCriteria(
+                new FilterByDateOnly('sale_date', $request->date_from, '>=')
+            );
         }
 
         if ($request->filled('date_to')) {
-            $query->whereDate('sale_date', '<=', $request->date_to);
+            $this->saleRepository->pushCriteria(
+                new FilterByDateOnly('sale_date', $request->date_to, '<=')
+            );
         }
 
         if ($request->filled('cashier_id')) {
-            $query->whereHas('user', function ($q) use ($request) {
-                $q->where('uuid', $request->cashier_id);
-            });
+            $this->saleRepository->pushCriteria(
+                new FilterByCashierUuid($request->cashier_id)
+            );
         }
 
         // Search by sale number
         if ($request->filled('search')) {
-            $query->where('sale_number', 'LIKE', '%' . $request->search . '%');
+            $this->saleRepository->pushCriteria(
+                new SearchByColumn('sale_number', $request->search)
+            );
         }
 
         // Order by most recent first
-        $query->orderBy('sale_date', 'desc');
+        $this->saleRepository->pushCriteria(
+            new OrderBy('sale_date', 'desc')
+        );
 
+        // Pagination
         $perPage = $request->input('per_page', 15);
-        $sales = $query->paginate($perPage);
+        $sales = $this->saleRepository->paginate($perPage);
 
         return $this->successResponse(
             SaleResource::collection($sales)->response()->getData(true),
@@ -122,10 +144,18 @@ class SaleController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $sale = Sale::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->with(['customer', 'items.product', 'payments', 'user', 'branch', 'voidedBy'])
-            ->firstOrFail();
+        $sale = $this->saleRepository->findByUuidWithRelations(
+            $uuid,
+            ['customer', 'items.product', 'payments', 'user', 'branch', 'voidedBy']
+        );
+
+        if (!$sale) {
+            return $this->errorResponse(
+                ['error' => 'Sale not found'],
+                'Sale not found.',
+                404
+            );
+        }
 
         return $this->successResponse(
             new SaleResource($sale),
@@ -139,9 +169,7 @@ class SaleController extends Controller
     public function void(VoidSaleRequest $request, string $uuid): JsonResponse
     {
         try {
-            $sale = Sale::where('uuid', $uuid)
-                ->where('store_id', Auth::user()->store_id)
-                ->firstOrFail();
+            $sale = $this->saleRepository->findByUuidOrFail($uuid);
 
             $voidedSale = $this->saleService->voidSale($sale, $request->reason);
 
@@ -170,10 +198,15 @@ class SaleController extends Controller
     public function refund(RefundSaleRequest $request, string $uuid): JsonResponse
     {
         try {
-            $sale = Sale::where('uuid', $uuid)
-                ->where('store_id', Auth::user()->store_id)
-                ->with('items')
-                ->firstOrFail();
+            $sale = $this->saleRepository->findByUuidWithRelations($uuid, ['items']);
+
+            if (!$sale) {
+                return $this->errorResponse(
+                    ['error' => 'Sale not found'],
+                    'Sale not found.',
+                    404
+                );
+            }
 
             $refundedSale = $this->saleService->refundSale(
                 $sale,
@@ -206,10 +239,18 @@ class SaleController extends Controller
      */
     public function getReceipt(string $uuid): JsonResponse
     {
-        $sale = Sale::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->with(['customer', 'items.product', 'payments', 'user.store', 'branch'])
-            ->firstOrFail();
+        $sale = $this->saleRepository->findByUuidWithRelations(
+            $uuid,
+            ['customer', 'items.product', 'payments', 'user.store', 'branch']
+        );
+
+        if (!$sale) {
+            return $this->errorResponse(
+                ['error' => 'Sale not found'],
+                'Sale not found.',
+                404
+            );
+        }
 
         return $this->successResponse(
             new ReceiptResource($sale),
@@ -222,10 +263,14 @@ class SaleController extends Controller
      */
     public function getReceiptPdf(string $uuid)
     {
-        $sale = Sale::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->with(['customer', 'items.product', 'payments', 'user.store', 'branch'])
-            ->firstOrFail();
+        $sale = $this->saleRepository->findByUuidWithRelations(
+            $uuid,
+            ['customer', 'items.product', 'payments', 'user.store', 'branch']
+        );
+
+        if (!$sale) {
+            abort(404, 'Sale not found');
+        }
 
         $receiptData = (new ReceiptResource($sale))->toArray(request());
 
@@ -248,10 +293,18 @@ class SaleController extends Controller
             'email' => 'required_if:method,email|nullable|email',
         ]);
 
-        $sale = Sale::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->with(['customer', 'items.product', 'payments', 'user.store', 'branch'])
-            ->firstOrFail();
+        $sale = $this->saleRepository->findByUuidWithRelations(
+            $uuid,
+            ['customer', 'items.product', 'payments', 'user.store', 'branch']
+        );
+
+        if (!$sale) {
+            return $this->errorResponse(
+                ['error' => 'Sale not found'],
+                'Sale not found.',
+                404
+            );
+        }
 
         try {
             if ($request->method === 'email') {

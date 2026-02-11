@@ -6,6 +6,9 @@ use App\Models\Customer;
 use App\Models\CreditTransaction;
 use App\Models\Sale;
 use App\Models\Store;
+use App\Repositories\Contracts\CustomerRepositoryInterface;
+use App\Repositories\Contracts\CreditTransactionRepositoryInterface;
+use App\Repositories\Contracts\SaleRepositoryInterface;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +16,12 @@ use Illuminate\Support\Facades\Log;
 
 class CreditService
 {
+    public function __construct(
+        protected CustomerRepositoryInterface $customerRepo,
+        protected CreditTransactionRepositoryInterface $creditTransactionRepo,
+        protected SaleRepositoryInterface $saleRepo
+    ) {
+    }
     /**
      * Charge credit to a customer's account.
      *
@@ -33,7 +42,7 @@ class CreditService
             $dueDate = now()->addDays($termsDays);
 
             // Create credit transaction
-            $transaction = CreditTransaction::create([
+            $transaction = $this->creditTransactionRepo->create([
                 'store_id' => $customer->store_id,
                 'customer_id' => $customer->id,
                 'sale_id' => $sale->id,
@@ -52,7 +61,7 @@ class CreditService
             ]);
 
             // Update customer's total outstanding (store in centavos)
-            $customer->update([
+            $this->customerRepo->update($customer->id, [
                 'total_outstanding' => $balanceAfter,
             ]);
 
@@ -68,7 +77,7 @@ class CreditService
                 ])
                 ->log('Credit charged to customer account');
 
-            return $transaction->fresh(['sale', 'customer']);
+            return $this->creditTransactionRepo->with(['sale', 'customer'])->find($transaction->id);
         });
     }
 
@@ -97,7 +106,7 @@ class CreditService
             $balanceAfter = max(0, $balanceBefore - $amount);
 
             // Create payment transaction
-            $transaction = CreditTransaction::create([
+            $transaction = $this->creditTransactionRepo->create([
                 'store_id' => $customer->store_id,
                 'customer_id' => $customer->id,
                 'user_id' => auth()->id(),
@@ -117,20 +126,8 @@ class CreditService
             $appliedTo = [];
             $remainingAmount = $amount;
 
-            if ($invoiceUuids && count($invoiceUuids) > 0) {
-                // Apply to specific invoices
-                $sales = Sale::whereIn('uuid', $invoiceUuids)
-                    ->where('customer_id', $customer->id)
-                    ->where('payment_status', '!=', 'paid')
-                    ->orderBy('sale_date', 'asc')
-                    ->get();
-            } else {
-                // Apply to oldest outstanding invoices (FIFO)
-                $sales = Sale::where('customer_id', $customer->id)
-                    ->where('payment_status', '!=', 'paid')
-                    ->orderBy('sale_date', 'asc')
-                    ->get();
-            }
+            // Get unpaid sales (FIFO ordered by sale_date)
+            $sales = $this->saleRepo->getUnpaidByCustomer($customer->id, $invoiceUuids);
 
             foreach ($sales as $sale) {
                 if ($remainingAmount <= 0) {
@@ -151,18 +148,14 @@ class CreditService
                 $newAmountPaid = $amountPaidCentavos + $amountToApply;
 
                 // Update sale
-                $sale->update([
+                $this->saleRepo->update($sale->id, [
                     'amount_paid' => $newAmountPaid,
                     'payment_status' => $newAmountPaid >= $totalAmountCentavos ? 'paid' : 'partial',
                 ]);
 
                 // Update credit transaction for this sale
-                CreditTransaction::where('sale_id', $sale->id)
-                    ->where('type', 'charge')
-                    ->whereNull('paid_date')
-                    ->update([
-                        'paid_date' => $newAmountPaid >= $totalAmountCentavos ? now() : null,
-                    ]);
+                $paidDate = $newAmountPaid >= $totalAmountCentavos ? now() : null;
+                $this->creditTransactionRepo->updatePaidDateForSale($sale->id, $paidDate);
 
                 $appliedTo[] = [
                     'sale_uuid' => $sale->uuid,
@@ -192,7 +185,7 @@ class CreditService
                 ->log('Payment received from customer');
 
             return [
-                'transaction' => $transaction->fresh(['customer']),
+                'transaction' => $this->creditTransactionRepo->with(['customer'])->find($transaction->id),
                 'applied_to' => $appliedTo,
                 'remaining_credit' => $remainingAmount / 100,
             ];
@@ -207,15 +200,10 @@ class CreditService
      */
     public function getAgingReport(Store $store): array
     {
-        $customers = Customer::where('store_id', $store->id)
-            ->where('total_outstanding', '>', 0)
-            ->get()
+        $customers = $this->customerRepo->getWithOutstanding()
             ->map(function ($customer) {
                 // Get all outstanding credit transactions
-                $transactions = CreditTransaction::where('customer_id', $customer->id)
-                    ->where('type', 'charge')
-                    ->whereNull('paid_date')
-                    ->get();
+                $transactions = $this->creditTransactionRepo->getUnpaidInvoices($customer->id);
 
                 $aging = [
                     'current' => 0,
@@ -285,17 +273,10 @@ class CreditService
     public function getCustomerStatement(Customer $customer, Carbon $from, Carbon $to): array
     {
         // Get opening balance (before start date)
-        $openingBalanceCentavos = CreditTransaction::where('customer_id', $customer->id)
-            ->where('transaction_date', '<', $from)
-            ->orderBy('transaction_date', 'desc')
-            ->value('balance_after') ?? 0;
+        $openingBalanceCentavos = $this->creditTransactionRepo->getOpeningBalance($customer->id, $from);
 
         // Get transactions in date range
-        $transactions = CreditTransaction::where('customer_id', $customer->id)
-            ->whereBetween('transaction_date', [$from, $to])
-            ->with('sale')
-            ->orderBy('transaction_date', 'asc')
-            ->get();
+        $transactions = $this->creditTransactionRepo->getStatementTransactions($customer->id, $from, $to);
 
         // Format transactions
         $formattedTransactions = [];
@@ -386,13 +367,10 @@ class CreditService
     public function updateOutstandingBalance(Customer $customer): void
     {
         // Calculate total outstanding from unpaid charges
-        $totalOutstanding = CreditTransaction::where('customer_id', $customer->id)
-            ->where('type', 'charge')
-            ->whereNull('paid_date')
-            ->sum(DB::raw('CAST(amount AS SIGNED)'));
+        $totalOutstanding = $this->creditTransactionRepo->getTotalOutstanding($customer->id);
 
         // Update customer record (value is already in centavos from DB)
-        $customer->update([
+        $this->customerRepo->update($customer->id, [
             'total_outstanding' => max(0, $totalOutstanding),
         ]);
     }
@@ -405,19 +383,7 @@ class CreditService
      */
     public function getOverdueAccounts(Store $store): Collection
     {
-        return Customer::where('store_id', $store->id)
-            ->whereHas('creditTransactions', function ($query) {
-                $query->where('type', 'charge')
-                    ->where('due_date', '<', now())
-                    ->whereNull('paid_date');
-            })
-            ->with(['creditTransactions' => function ($query) {
-                $query->where('type', 'charge')
-                    ->where('due_date', '<', now())
-                    ->whereNull('paid_date')
-                    ->orderBy('due_date', 'asc');
-            }])
-            ->get()
+        return $this->customerRepo->getWithOverdueInvoices()
             ->map(function ($customer) {
                 $overdueTransactions = $customer->creditTransactions;
                 $totalOverdue = $overdueTransactions->sum(fn ($t) => $t->getRawOriginal('amount')) / 100;
@@ -456,7 +422,7 @@ class CreditService
 
         DB::transaction(function () use ($customer, $newLimit, $oldLimit, $reason) {
             // Update credit limit
-            $customer->update([
+            $this->customerRepo->update($customer->id, [
                 'credit_limit' => $newLimit,
             ]);
 
@@ -472,7 +438,7 @@ class CreditService
                 ->log('Credit limit adjusted');
         });
 
-        return $customer->fresh();
+        return $this->customerRepo->find($customer->id);
     }
 
     /**
@@ -484,10 +450,7 @@ class CreditService
     public function markOverdueTransactions(): int
     {
         // Note: Status is computed, but we update paid_date to null for overdue tracking
-        $count = CreditTransaction::where('type', 'charge')
-            ->where('due_date', '<', now())
-            ->whereNull('paid_date')
-            ->count();
+        $count = $this->creditTransactionRepo->getUnpaidChargesCount();
 
         Log::info("Marked {$count} credit transactions as overdue");
 

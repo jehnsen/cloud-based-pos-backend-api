@@ -5,23 +5,33 @@ namespace App\Services;
 use App\Models\Delivery;
 use App\Models\DeliveryItem;
 use App\Models\Sale;
-use App\Models\Store;
-use App\Models\User;
+use App\Repositories\Contracts\DeliveryRepositoryInterface;
+use App\Repositories\Contracts\SaleRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class DeliveryService
 {
+    protected DeliveryRepositoryInterface $deliveryRepository;
+    protected SaleRepositoryInterface $saleRepository;
+
+    public function __construct(
+        DeliveryRepositoryInterface $deliveryRepository,
+        SaleRepositoryInterface $saleRepository
+    ) {
+        $this->deliveryRepository = $deliveryRepository;
+        $this->saleRepository = $saleRepository;
+    }
     /**
      * Create delivery from sale.
      */
     public function createDelivery(Sale $sale, array $data): Delivery
     {
         return DB::transaction(function () use ($sale, $data) {
-            $deliveryNumber = $this->generateDeliveryNumber($sale->store);
+            $deliveryNumber = $this->generateDeliveryNumber();
 
-            $delivery = Delivery::create([
+            $delivery = $this->deliveryRepository->create([
                 'uuid' => Str::uuid(),
                 'store_id' => $sale->store_id,
                 'branch_id' => $sale->branch_id,
@@ -97,21 +107,20 @@ class DeliveryService
         });
     }
 
-    public function generateDeliveryNumber(Store $store): string
+    public function generateDeliveryNumber(): string
     {
-        return DB::transaction(function () use ($store) {
-            $year = now()->year;
-            $prefix = "DEL-{$year}-";
+        $year = now()->year;
+        $prefix = "DEL-{$year}-";
 
-            $lastDelivery = Delivery::where('store_id', $store->id)
-                ->where('delivery_number', 'like', $prefix . '%')
-                ->lockForUpdate()
-                ->orderByDesc('id')
-                ->first();
+        // Direct query for number generation with locking
+        // Repository doesn't have getNextDeliveryNumber() method yet
+        $lastDelivery = Delivery::where('delivery_number', 'like', $prefix . '%')
+            ->lockForUpdate()
+            ->orderByDesc('id')
+            ->first();
 
-            $newNumber = $lastDelivery ? ((int) substr($lastDelivery->delivery_number, -6)) + 1 : 1;
-            return $prefix . str_pad($newNumber, 6, '0', STR_PAD_LEFT);
-        });
+        $newNumber = $lastDelivery ? ((int) substr($lastDelivery->delivery_number, -6)) + 1 : 1;
+        return $prefix . str_pad($newNumber, 6, '0', STR_PAD_LEFT);
     }
 
     protected function validateStatusTransition(string $currentStatus, string $newStatus): void

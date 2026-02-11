@@ -4,11 +4,11 @@ namespace App\Services;
 
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
-use App\Models\Product;
-use App\Models\Supplier;
-use App\Models\Store;
 use App\Models\ActivityLog;
 use App\Events\PurchaseOrderReceived;
+use App\Repositories\Contracts\PurchaseOrderRepositoryInterface;
+use App\Repositories\Contracts\SupplierRepositoryInterface;
+use App\Repositories\Contracts\ProductRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
@@ -16,10 +16,20 @@ use Carbon\Carbon;
 class PurchaseOrderService
 {
     protected InventoryService $inventoryService;
+    protected PurchaseOrderRepositoryInterface $purchaseOrderRepository;
+    protected SupplierRepositoryInterface $supplierRepository;
+    protected ProductRepositoryInterface $productRepository;
 
-    public function __construct(InventoryService $inventoryService)
-    {
+    public function __construct(
+        InventoryService $inventoryService,
+        PurchaseOrderRepositoryInterface $purchaseOrderRepository,
+        SupplierRepositoryInterface $supplierRepository,
+        ProductRepositoryInterface $productRepository
+    ) {
         $this->inventoryService = $inventoryService;
+        $this->purchaseOrderRepository = $purchaseOrderRepository;
+        $this->supplierRepository = $supplierRepository;
+        $this->productRepository = $productRepository;
     }
 
     /**
@@ -35,22 +45,18 @@ class PurchaseOrderService
             $user = Auth::user();
             $store = $user->store;
 
-            // Get supplier
-            $supplier = Supplier::where('uuid', $data['supplier_id'])
-                ->where('store_id', $store->id)
-                ->firstOrFail();
+            // Get supplier via repository
+            $supplier = $this->supplierRepository->findByUuidOrFail($data['supplier_id']);
 
             // Generate PO number
-            $poNumber = $this->generatePoNumber($store);
+            $poNumber = $this->purchaseOrderRepository->getNextPoNumber();
 
             // Load and validate products
             $products = [];
             $totalAmount = 0;
 
             foreach ($data['items'] as $item) {
-                $product = Product::where('uuid', $item['product_id'])
-                    ->where('store_id', $store->id)
-                    ->firstOrFail();
+                $product = $this->productRepository->findByUuidOrFail($item['product_id']);
 
                 $lineTotal = $item['quantity'] * $item['unit_cost'];
                 $totalAmount += $lineTotal;
@@ -63,8 +69,8 @@ class PurchaseOrderService
                 ];
             }
 
-            // Create purchase order
-            $purchaseOrder = PurchaseOrder::create([
+            // Create purchase order via repository
+            $purchaseOrder = $this->purchaseOrderRepository->create([
                 'store_id' => $store->id,
                 'supplier_id' => $supplier->id,
                 'branch_id' => $user->branch_id,
@@ -127,10 +133,7 @@ class PurchaseOrderService
 
             // Update supplier if provided
             if (isset($data['supplier_id'])) {
-                $supplier = Supplier::where('uuid', $data['supplier_id'])
-                    ->where('store_id', $store->id)
-                    ->firstOrFail();
-
+                $supplier = $this->supplierRepository->findByUuidOrFail($data['supplier_id']);
                 $purchaseOrder->supplier_id = $supplier->id;
             }
 
@@ -152,9 +155,7 @@ class PurchaseOrderService
                 $totalAmount = 0;
 
                 foreach ($data['items'] as $item) {
-                    $product = Product::where('uuid', $item['product_id'])
-                        ->where('store_id', $store->id)
-                        ->firstOrFail();
+                    $product = $this->productRepository->findByUuidOrFail($item['product_id']);
 
                     $lineTotal = $item['quantity'] * $item['unit_cost'];
                     $totalAmount += $lineTotal;
@@ -354,33 +355,12 @@ class PurchaseOrderService
     /**
      * Generate a unique PO number.
      *
-     * @param Store $store
      * @return string
      */
-    public function generatePoNumber(Store $store): string
+    public function generatePoNumber(): string
     {
-        return DB::transaction(function () use ($store) {
-            $year = Carbon::now()->format('Y');
-            $prefix = "PO-{$year}-";
-
-            // Get the latest PO number for this year with lock
-            $latestPo = PurchaseOrder::where('store_id', $store->id)
-                ->where('po_number', 'LIKE', "{$prefix}%")
-                ->lockForUpdate()
-                ->orderBy('po_number', 'desc')
-                ->first();
-
-            if ($latestPo) {
-                // Extract the sequence number and increment
-                $lastNumber = (int) substr($latestPo->po_number, strlen($prefix));
-                $nextNumber = $lastNumber + 1;
-            } else {
-                // First PO of the year
-                $nextNumber = 1;
-            }
-
-            // Format with 6 digits
-            return $prefix . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+        return DB::transaction(function () {
+            return $this->purchaseOrderRepository->getNextPoNumber();
         });
     }
 }

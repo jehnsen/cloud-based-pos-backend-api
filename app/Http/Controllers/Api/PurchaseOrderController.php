@@ -7,12 +7,16 @@ use App\Http\Requests\PurchaseOrder\StorePurchaseOrderRequest;
 use App\Http\Requests\PurchaseOrder\UpdatePurchaseOrderRequest;
 use App\Http\Requests\PurchaseOrder\ReceivePurchaseOrderRequest;
 use App\Http\Resources\PurchaseOrderResource;
-use App\Models\PurchaseOrder;
+use App\Repositories\Contracts\PurchaseOrderRepositoryInterface;
+use App\Repositories\Criteria\FilterByColumn;
+use App\Repositories\Criteria\FilterByStatus;
+use App\Repositories\Criteria\FilterBySupplierUuid;
+use App\Repositories\Criteria\OrderBy;
+use App\Repositories\Criteria\WithRelations;
 use App\Services\PurchaseOrderService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class PurchaseOrderController extends Controller
@@ -20,10 +24,14 @@ class PurchaseOrderController extends Controller
     use ApiResponse;
 
     protected PurchaseOrderService $purchaseOrderService;
+    protected PurchaseOrderRepositoryInterface $purchaseOrderRepo;
 
-    public function __construct(PurchaseOrderService $purchaseOrderService)
-    {
+    public function __construct(
+        PurchaseOrderService $purchaseOrderService,
+        PurchaseOrderRepositoryInterface $purchaseOrderRepo
+    ) {
         $this->purchaseOrderService = $purchaseOrderService;
+        $this->purchaseOrderRepo = $purchaseOrderRepo;
     }
 
     /**
@@ -31,44 +39,53 @@ class PurchaseOrderController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = PurchaseOrder::where('store_id', Auth::user()->store_id)
-            ->with(['supplier', 'purchaseOrderItems.product']);
+        // Apply eager loading
+        $this->purchaseOrderRepo->pushCriteria(
+            new WithRelations(['supplier', 'purchaseOrderItems.product'])
+        );
 
         // Search by PO number
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where('po_number', 'LIKE', "%{$search}%");
+            $this->purchaseOrderRepo->pushCriteria(
+                new FilterByColumn('po_number', "%{$request->input('search')}%", 'LIKE')
+            );
         }
 
         // Filter by status
         if ($request->filled('status')) {
-            $query->where('status', $request->input('status'));
+            $this->purchaseOrderRepo->pushCriteria(
+                new FilterByStatus($request->input('status'))
+            );
         }
 
-        // Filter by supplier
+        // Filter by supplier UUID
         if ($request->filled('supplier_id')) {
-            $query->whereHas('supplier', function ($q) use ($request) {
-                $q->where('uuid', $request->input('supplier_id'));
-            });
+            $this->purchaseOrderRepo->pushCriteria(
+                new FilterBySupplierUuid($request->input('supplier_id'))
+            );
         }
 
         // Filter by date range
         if ($request->filled('date_from')) {
-            $query->where('order_date', '>=', $request->input('date_from'));
+            $this->purchaseOrderRepo->pushCriteria(
+                new FilterByColumn('order_date', $request->input('date_from'), '>=')
+            );
         }
 
         if ($request->filled('date_to')) {
-            $query->where('order_date', '<=', $request->input('date_to'));
+            $this->purchaseOrderRepo->pushCriteria(
+                new FilterByColumn('order_date', $request->input('date_to'), '<=')
+            );
         }
 
         // Sorting
         $sortBy = $request->input('sort_by', 'created_at');
         $sortOrder = $request->input('sort_order', 'desc');
-        $query->orderBy($sortBy, $sortOrder);
+        $this->purchaseOrderRepo->pushCriteria(new OrderBy($sortBy, $sortOrder));
 
         // Pagination
         $perPage = $request->input('per_page', 15);
-        $purchaseOrders = $query->paginate($perPage);
+        $purchaseOrders = $this->purchaseOrderRepo->paginate($perPage);
 
         return $this->paginatedResponse(
             $purchaseOrders->setCollection(
@@ -101,10 +118,11 @@ class PurchaseOrderController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $purchaseOrder = PurchaseOrder::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->with(['supplier', 'purchaseOrderItems.product.unit', 'user', 'branch'])
-            ->firstOrFail();
+        $this->purchaseOrderRepo->pushCriteria(
+            new WithRelations(['supplier', 'purchaseOrderItems.product.unit', 'user', 'branch'])
+        );
+
+        $purchaseOrder = $this->purchaseOrderRepo->findByUuidOrFail($uuid);
 
         return $this->successResponse(
             new PurchaseOrderResource($purchaseOrder),
@@ -118,9 +136,7 @@ class PurchaseOrderController extends Controller
     public function update(UpdatePurchaseOrderRequest $request, string $uuid): JsonResponse
     {
         try {
-            $purchaseOrder = PurchaseOrder::where('uuid', $uuid)
-                ->where('store_id', Auth::user()->store_id)
-                ->firstOrFail();
+            $purchaseOrder = $this->purchaseOrderRepo->findByUuidOrFail($uuid);
 
             $updatedPurchaseOrder = $this->purchaseOrderService->updatePurchaseOrder(
                 $purchaseOrder,
@@ -141,9 +157,7 @@ class PurchaseOrderController extends Controller
      */
     public function destroy(string $uuid): JsonResponse
     {
-        $purchaseOrder = PurchaseOrder::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
+        $purchaseOrder = $this->purchaseOrderRepo->findByUuidOrFail($uuid);
 
         // Only allow deletion of draft POs
         if ($purchaseOrder->status !== 'draft') {
@@ -165,9 +179,7 @@ class PurchaseOrderController extends Controller
     public function submit(string $uuid): JsonResponse
     {
         try {
-            $purchaseOrder = PurchaseOrder::where('uuid', $uuid)
-                ->where('store_id', Auth::user()->store_id)
-                ->firstOrFail();
+            $purchaseOrder = $this->purchaseOrderRepo->findByUuidOrFail($uuid);
 
             $submittedPurchaseOrder = $this->purchaseOrderService->submitPurchaseOrder($purchaseOrder);
 
@@ -186,9 +198,7 @@ class PurchaseOrderController extends Controller
     public function receive(ReceivePurchaseOrderRequest $request, string $uuid): JsonResponse
     {
         try {
-            $purchaseOrder = PurchaseOrder::where('uuid', $uuid)
-                ->where('store_id', Auth::user()->store_id)
-                ->firstOrFail();
+            $purchaseOrder = $this->purchaseOrderRepo->findByUuidOrFail($uuid);
 
             $receivedPurchaseOrder = $this->purchaseOrderService->receivePurchaseOrder(
                 $purchaseOrder,
@@ -215,9 +225,7 @@ class PurchaseOrderController extends Controller
         ]);
 
         try {
-            $purchaseOrder = PurchaseOrder::where('uuid', $uuid)
-                ->where('store_id', Auth::user()->store_id)
-                ->firstOrFail();
+            $purchaseOrder = $this->purchaseOrderRepo->findByUuidOrFail($uuid);
 
             $cancelledPurchaseOrder = $this->purchaseOrderService->cancelPurchaseOrder(
                 $purchaseOrder,
@@ -238,10 +246,11 @@ class PurchaseOrderController extends Controller
      */
     public function pdf(string $uuid)
     {
-        $purchaseOrder = PurchaseOrder::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->with(['supplier', 'purchaseOrderItems.product.unit', 'user', 'branch', 'store'])
-            ->firstOrFail();
+        $this->purchaseOrderRepo->pushCriteria(
+            new WithRelations(['supplier', 'purchaseOrderItems.product.unit', 'user', 'branch', 'store'])
+        );
+
+        $purchaseOrder = $this->purchaseOrderRepo->findByUuidOrFail($uuid);
 
         $pdf = Pdf::loadView('purchase-orders.po', [
             'purchaseOrder' => $purchaseOrder,

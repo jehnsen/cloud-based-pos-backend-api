@@ -11,6 +11,10 @@ use App\Models\Customer;
 use App\Models\CreditTransaction;
 use App\Events\SaleCompleted;
 use App\Events\SaleVoided;
+use App\Repositories\Contracts\ProductRepositoryInterface;
+use App\Repositories\Contracts\SaleRepositoryInterface;
+use App\Repositories\Contracts\CustomerRepositoryInterface;
+use App\Repositories\Contracts\CreditTransactionRepositoryInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -18,10 +22,23 @@ use Illuminate\Validation\ValidationException;
 class SaleService
 {
     protected InventoryService $inventoryService;
+    protected ProductRepositoryInterface $productRepo;
+    protected SaleRepositoryInterface $saleRepo;
+    protected CustomerRepositoryInterface $customerRepo;
+    protected CreditTransactionRepositoryInterface $creditTransactionRepo;
 
-    public function __construct(InventoryService $inventoryService)
-    {
+    public function __construct(
+        InventoryService $inventoryService,
+        ProductRepositoryInterface $productRepo,
+        SaleRepositoryInterface $saleRepo,
+        CustomerRepositoryInterface $customerRepo,
+        CreditTransactionRepositoryInterface $creditTransactionRepo
+    ) {
         $this->inventoryService = $inventoryService;
+        $this->productRepo = $productRepo;
+        $this->saleRepo = $saleRepo;
+        $this->customerRepo = $customerRepo;
+        $this->creditTransactionRepo = $creditTransactionRepo;
     }
 
     /**
@@ -40,12 +57,8 @@ class SaleService
         $productIds = collect($data['items'])->pluck('product_id')->toArray();
         $this->validateProductsBelongToStore($productIds, $store->id);
 
-        // Step 2: Load all products from database
-        $products = Product::whereIn('uuid', $productIds)
-            ->where('store_id', $store->id)
-            ->where('is_active', true)
-            ->get()
-            ->keyBy('uuid');
+        // Step 2: Load all products from database via repository
+        $products = $this->productRepo->findManyByUuids($productIds)->keyBy('uuid');
 
         if ($products->count() !== count($productIds)) {
             throw ValidationException::withMessages([
@@ -98,24 +111,20 @@ class SaleService
                 ]);
             }
 
-            $customer = Customer::where('uuid', $data['customer_id'])
-                ->where('store_id', $store->id)
-                ->firstOrFail();
+            $customer = $this->customerRepo->findByUuidOrFail($data['customer_id']);
 
             $this->validateCreditLimit($customer, $calculations['total_amount']);
         } elseif (!empty($data['customer_id'])) {
-            $customer = Customer::where('uuid', $data['customer_id'])
-                ->where('store_id', $store->id)
-                ->first();
+            $customer = $this->customerRepo->findByUuid($data['customer_id']);
         }
 
         // Step 11: Begin database transaction
         return DB::transaction(function () use ($data, $calculations, $products, $store, $user, $customer, $hasCreditPayment) {
-            // Step 12: Generate sale number
-            $saleNumber = $this->generateSaleNumber($store);
+            // Step 12: Generate sale number via repository
+            $saleNumber = $this->saleRepo->getNextSaleNumber();
 
-            // Step 13: Create Sale record
-            $sale = Sale::create([
+            // Step 13: Create Sale record via repository
+            $sale = $this->saleRepo->create([
                 'uuid' => \Illuminate\Support\Str::uuid(),
                 'store_id' => $store->id,
                 'branch_id' => $user->branch_id,
@@ -199,8 +208,8 @@ class SaleService
                 // Update customer outstanding balance
                 $customer->increment('total_outstanding', $creditAmount);
 
-                // Create credit transaction record
-                CreditTransaction::create([
+                // Create credit transaction record via repository
+                $this->creditTransactionRepo->create([
                     'customer_id' => $customer->id,
                     'sale_id' => $sale->id,
                     'type' => 'charge',
@@ -279,10 +288,13 @@ class SaleService
                 // Decrease outstanding balance
                 $customer->decrement('total_outstanding', $creditPayment->amount);
 
-                // Mark credit transaction as reversed
-                $creditTransaction = CreditTransaction::where('sale_id', $sale->id)
+                // Mark credit transaction as reversed - find via repository
+                $creditTransactions = $this->creditTransactionRepo
+                    ->where('sale_id', $sale->id)
                     ->where('type', 'charge')
-                    ->first();
+                    ->all();
+
+                $creditTransaction = $creditTransactions->first();
 
                 if ($creditTransaction) {
                     $creditTransaction->update([
@@ -291,8 +303,8 @@ class SaleService
                         'reversed_by' => $user->id,
                     ]);
 
-                    // Create reversal transaction
-                    CreditTransaction::create([
+                    // Create reversal transaction via repository
+                    $this->creditTransactionRepo->create([
                         'customer_id' => $customer->id,
                         'sale_id' => $sale->id,
                         'type' => 'reversal',
@@ -504,34 +516,6 @@ class SaleService
         return $held->delete();
     }
 
-    /**
-     * Generate sequential sale number.
-     *
-     * @param \App\Models\Store $store
-     * @return string
-     */
-    public function generateSaleNumber($store): string
-    {
-        $year = now()->year;
-        $prefix = "INV-{$year}-";
-
-        // Lock the sales table to prevent race conditions
-        $lastSale = Sale::where('store_id', $store->id)
-            ->where('sale_number', 'LIKE', "{$prefix}%")
-            ->lockForUpdate()
-            ->orderBy('sale_number', 'desc')
-            ->first();
-
-        if ($lastSale) {
-            // Extract the sequential number and increment
-            $lastNumber = (int) substr($lastSale->sale_number, -6);
-            $nextNumber = $lastNumber + 1;
-        } else {
-            $nextNumber = 1;
-        }
-
-        return $prefix . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
-    }
 
     /**
      * Calculate all totals in centavos.
@@ -618,10 +602,8 @@ class SaleService
      */
     protected function validateProductsBelongToStore(array $productIds, int $storeId): void
     {
-        $count = Product::whereIn('uuid', $productIds)
-            ->where('store_id', $storeId)
-            ->where('is_active', true)
-            ->count();
+        // Use repository to find products - repository applies store_id filter automatically
+        $count = $this->productRepo->findManyByUuids($productIds)->count();
 
         if ($count !== count($productIds)) {
             throw ValidationException::withMessages([

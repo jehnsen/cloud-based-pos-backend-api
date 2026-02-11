@@ -22,12 +22,14 @@ class SupplierRepository extends BaseRepository implements SupplierRepositoryInt
     {
         return $this->newQuery()
             ->where(function ($q) use ($query) {
-                $q->where('company_name', 'LIKE', "%{$query}%")
+                $q->where('name', 'LIKE', "%{$query}%")
+                    ->orWhere('company_name', 'LIKE', "%{$query}%")
                     ->orWhere('contact_person', 'LIKE', "%{$query}%")
+                    ->orWhere('phone', 'LIKE', "%{$query}%")
                     ->orWhere('contact_person_phone', 'LIKE', "%{$query}%")
                     ->orWhere('code', 'LIKE', "%{$query}%");
             })
-            ->orderBy('company_name')
+            ->orderBy('name')
             ->paginate($perPage);
     }
 
@@ -87,30 +89,94 @@ class SupplierRepository extends BaseRepository implements SupplierRepositoryInt
         return true;
     }
 
-    public function getPriceHistory(string $supplierUuid, string $productUuid, int $months = 12): Collection
+    public function getPriceHistory(string $supplierUuid, ?string $productUuid = null, ?string $fromDate = null, ?string $toDate = null): Collection
     {
         $supplier = $this->findByUuidOrFail($supplierUuid);
-        $product = Product::where('uuid', $productUuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
 
-        $cutoffDate = Carbon::now()->subMonths($months);
-
-        return DB::table('purchase_order_items as poi')
+        $query = DB::table('purchase_order_items as poi')
             ->join('purchase_orders as po', 'poi.purchase_order_id', '=', 'po.id')
+            ->join('products as p', 'poi.product_id', '=', 'p.id')
             ->where('po.supplier_id', $supplier->id)
-            ->where('poi.product_id', $product->id)
-            ->where('po.status', '!=', 'cancelled')
-            ->where('po.order_date', '>=', $cutoffDate)
+            ->whereIn('po.status', ['submitted', 'partial', 'received'])
             ->select(
-                'po.po_number',
-                'po.order_date',
+                'p.uuid as product_uuid',
+                'p.name as product_name',
+                'p.sku as product_sku',
                 'poi.unit_price',
                 'poi.quantity_ordered',
-                'poi.quantity_received',
-                'po.status'
-            )
-            ->orderBy('po.order_date', 'desc')
+                'po.order_date',
+                'po.po_number'
+            );
+
+        // Filter by specific product if provided
+        if ($productUuid) {
+            $product = Product::where('uuid', $productUuid)
+                ->where('store_id', Auth::user()->store_id)
+                ->firstOrFail();
+
+            $query->where('poi.product_id', $product->id);
+        }
+
+        // Filter by date range
+        if ($fromDate) {
+            $query->where('po.order_date', '>=', $fromDate);
+        }
+
+        if ($toDate) {
+            $query->where('po.order_date', '<=', $toDate);
+        }
+
+        return $query->orderBy('po.order_date', 'desc')->get();
+    }
+
+    public function getSupplierStatistics(string $supplierUuid): array
+    {
+        $supplier = $this->findByUuidOrFail($supplierUuid);
+
+        $totalPurchasesAmount = $supplier->purchaseOrders()
+            ->whereIn('status', ['received', 'partial'])
+            ->sum('total_amount');
+
+        $lastPurchaseDate = $supplier->purchaseOrders()
+            ->orderBy('order_date', 'desc')
+            ->value('order_date');
+
+        return [
+            'total_purchases_amount' => $totalPurchasesAmount,
+            'last_purchase_date' => $lastPurchaseDate,
+        ];
+    }
+
+    public function getPriceComparisonReport(?int $productId = null): Collection
+    {
+        $storeId = Auth::user()->store_id;
+
+        $query = DB::table('supplier_product')
+            ->join('products', 'supplier_product.product_id', '=', 'products.id')
+            ->join('suppliers', 'supplier_product.supplier_id', '=', 'suppliers.id')
+            ->where('products.store_id', $storeId)
+            ->select(
+                'products.id as product_id',
+                'products.uuid as product_uuid',
+                'products.name as product_name',
+                'products.sku as product_sku',
+                'products.cost_price as current_cost_price',
+                'suppliers.id as supplier_id',
+                'suppliers.code as supplier_code',
+                'suppliers.company_name as supplier_name',
+                'supplier_product.supplier_sku',
+                'supplier_product.supplier_price',
+                'supplier_product.lead_time_days',
+                'supplier_product.minimum_order_quantity',
+                'supplier_product.is_preferred'
+            );
+
+        if ($productId) {
+            $query->where('products.id', $productId);
+        }
+
+        return $query->orderBy('products.name')
+            ->orderBy('supplier_product.supplier_price')
             ->get();
     }
 }

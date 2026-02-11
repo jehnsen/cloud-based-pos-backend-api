@@ -142,22 +142,88 @@ class CreditTransactionRepository extends BaseRepository implements CreditTransa
 
     public function getCollectionReport(Carbon $from, Carbon $to): array
     {
-        $storeId = Auth::user()->store_id;
+        // Daily collections
+        $dailyCollections = $this->newQuery()
+            ->where('type', 'payment')
+            ->whereBetween('transaction_date', [$from, $to])
+            ->selectRaw('
+                DATE(transaction_date) as date,
+                payment_method,
+                COUNT(*) as payment_count,
+                SUM(ABS(amount)) as total_collected
+            ')
+            ->groupBy('date', 'payment_method')
+            ->orderBy('date', 'desc')
+            ->get();
 
+        // Summary by payment method
+        $methodSummary = $this->newQuery()
+            ->where('type', 'payment')
+            ->whereBetween('transaction_date', [$from, $to])
+            ->selectRaw('
+                payment_method,
+                COUNT(*) as payment_count,
+                SUM(ABS(amount)) as total_collected
+            ')
+            ->groupBy('payment_method')
+            ->get();
+
+        // Overall summary
         $summary = $this->newQuery()
             ->where('type', 'payment')
             ->whereBetween('transaction_date', [$from, $to])
             ->selectRaw('
                 COUNT(*) as payment_count,
-                SUM(amount) as total_collected,
-                AVG(amount) as average_payment
+                SUM(ABS(amount)) as total_collected
             ')
             ->first();
 
         return [
-            'payment_count' => (int) ($summary->payment_count ?? 0),
-            'total_collected' => (int) ($summary->total_collected ?? 0),
-            'average_payment' => (int) ($summary->average_payment ?? 0),
+            'summary' => [
+                'total_collected' => (int) ($summary->total_collected ?? 0),
+                'total_payments' => (int) ($summary->payment_count ?? 0),
+            ],
+            'by_method' => $methodSummary,
+            'daily_collections' => $dailyCollections,
         ];
+    }
+
+    public function getStatementTransactions(int $customerId, Carbon $from, Carbon $to): Collection
+    {
+        return $this->newQuery()
+            ->where('customer_id', $customerId)
+            ->whereBetween('transaction_date', [$from, $to])
+            ->with('sale')
+            ->orderBy('transaction_date', 'asc')
+            ->get();
+    }
+
+    public function getOpeningBalance(int $customerId, Carbon $before): int
+    {
+        return (int) $this->newQuery()
+            ->where('customer_id', $customerId)
+            ->where('transaction_date', '<', $before)
+            ->orderBy('transaction_date', 'desc')
+            ->value('balance_after') ?? 0;
+    }
+
+    public function updatePaidDateForSale(int $saleId, ?Carbon $paidDate): int
+    {
+        return $this->newQuery()
+            ->where('sale_id', $saleId)
+            ->where('type', 'charge')
+            ->whereNull('paid_date')
+            ->update([
+                'paid_date' => $paidDate,
+            ]);
+    }
+
+    public function getUnpaidChargesCount(): int
+    {
+        return $this->newQuery()
+            ->where('type', 'charge')
+            ->where('due_date', '<', Carbon::now())
+            ->whereNull('paid_date')
+            ->count();
     }
 }

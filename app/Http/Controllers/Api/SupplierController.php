@@ -7,49 +7,60 @@ use App\Http\Requests\Supplier\StoreSupplierRequest;
 use App\Http\Requests\Supplier\UpdateSupplierRequest;
 use App\Http\Resources\SupplierResource;
 use App\Http\Resources\ProductResource;
-use App\Models\Supplier;
-use App\Models\Product;
+use App\Repositories\Contracts\SupplierRepositoryInterface;
+use App\Repositories\Criteria\SearchMultipleColumns;
+use App\Repositories\Criteria\FilterByColumn;
+use App\Repositories\Criteria\OrderBy;
+use App\Repositories\Criteria\WithRelations;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class SupplierController extends Controller
 {
     use ApiResponse;
+
+    protected SupplierRepositoryInterface $supplierRepo;
+
+    public function __construct(SupplierRepositoryInterface $supplierRepo)
+    {
+        $this->supplierRepo = $supplierRepo;
+    }
 
     /**
      * Display a listing of suppliers.
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Supplier::where('store_id', Auth::user()->store_id)
-            ->withCount('purchaseOrders');
-
-        // Search
+        // Apply search criteria
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('contact_person', 'LIKE', "%{$search}%")
-                    ->orWhere('phone', 'LIKE', "%{$search}%");
-            });
+            $this->supplierRepo->pushCriteria(
+                new SearchMultipleColumns(
+                    $request->input('search'),
+                    ['name', 'contact_person', 'phone']
+                )
+            );
         }
 
         // Filter by active status
         if ($request->filled('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
+            $this->supplierRepo->pushCriteria(
+                new FilterByColumn('is_active', $request->boolean('is_active'))
+            );
         }
 
-        // Sorting
+        // Apply sorting
         $sortBy = $request->input('sort_by', 'name');
         $sortOrder = $request->input('sort_order', 'asc');
-        $query->orderBy($sortBy, $sortOrder);
+        $this->supplierRepo->pushCriteria(new OrderBy($sortBy, $sortOrder));
 
-        // Pagination
+        // Get paginated results
         $perPage = $request->input('per_page', 15);
-        $suppliers = $query->paginate($perPage);
+        $suppliers = $this->supplierRepo->paginate($perPage);
+
+        // Load counts after pagination
+        $suppliers->getCollection()->each->loadCount('purchaseOrders');
 
         return $this->paginatedResponse(
             $suppliers->setCollection(
@@ -64,7 +75,7 @@ class SupplierController extends Controller
      */
     public function store(StoreSupplierRequest $request): JsonResponse
     {
-        $supplier = Supplier::create([
+        $supplier = $this->supplierRepo->create([
             'store_id' => Auth::user()->store_id,
             'name' => $request->input('name'),
             'contact_person' => $request->input('contact_person'),
@@ -93,19 +104,20 @@ class SupplierController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $supplier = Supplier::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->withCount(['purchaseOrders', 'products'])
-            ->firstOrFail();
+        // Apply criteria for relationships and counts
+        $this->supplierRepo->pushCriteria(
+            new WithRelations(['purchaseOrders', 'products'])
+        );
 
-        // Add statistics
-        $supplier->total_purchases_amount = $supplier->purchaseOrders()
-            ->whereIn('status', ['received', 'partial'])
-            ->sum('total_amount');
+        $supplier = $this->supplierRepo->findByUuidOrFail($uuid);
 
-        $supplier->last_purchase_date = $supplier->purchaseOrders()
-            ->orderBy('order_date', 'desc')
-            ->value('order_date');
+        // Get statistics
+        $statistics = $this->supplierRepo->getSupplierStatistics($uuid);
+        $supplier->total_purchases_amount = $statistics['total_purchases_amount'];
+        $supplier->last_purchase_date = $statistics['last_purchase_date'];
+
+        // Add counts
+        $supplier->loadCount(['purchaseOrders', 'products']);
 
         return $this->successResponse(
             new SupplierResource($supplier),
@@ -118,11 +130,9 @@ class SupplierController extends Controller
      */
     public function update(UpdateSupplierRequest $request, string $uuid): JsonResponse
     {
-        $supplier = Supplier::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
+        $supplier = $this->supplierRepo->findByUuidOrFail($uuid);
 
-        $supplier->update($request->only([
+        $updateData = $request->only([
             'name',
             'contact_person',
             'email',
@@ -135,9 +145,13 @@ class SupplierController extends Controller
             'payment_terms_days',
             'is_active',
             'notes',
-        ]) + [
-            'mobile' => $request->input('alternate_phone'),
         ]);
+
+        if ($request->filled('alternate_phone')) {
+            $updateData['mobile'] = $request->input('alternate_phone');
+        }
+
+        $supplier->update($updateData);
 
         return $this->successResponse(
             new SupplierResource($supplier->fresh()),
@@ -150,9 +164,7 @@ class SupplierController extends Controller
      */
     public function destroy(string $uuid): JsonResponse
     {
-        $supplier = Supplier::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
+        $supplier = $this->supplierRepo->findByUuidOrFail($uuid);
 
         // Check if supplier has purchase orders
         $poCount = $supplier->purchaseOrders()->count();
@@ -173,13 +185,7 @@ class SupplierController extends Controller
      */
     public function products(string $uuid): JsonResponse
     {
-        $supplier = Supplier::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
-
-        $products = $supplier->products()
-            ->with(['category', 'unit'])
-            ->get();
+        $products = $this->supplierRepo->getSupplierProducts($uuid);
 
         return $this->successResponse(
             ProductResource::collection($products),
@@ -199,21 +205,21 @@ class SupplierController extends Controller
             'is_preferred' => ['nullable', 'boolean'],
         ]);
 
-        $supplier = Supplier::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
-
-        $product = Product::where('uuid', $request->input('product_id'))
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
-
         // Check if already exists
+        $supplier = $this->supplierRepo->findByUuidOrFail($uuid);
+        $productUuid = $request->input('product_id');
+
+        // Find product by UUID to verify it exists
+        $product = \App\Models\Product::where('uuid', $productUuid)
+            ->where('store_id', Auth::user()->store_id)
+            ->firstOrFail();
+
         if ($supplier->products()->where('product_id', $product->id)->exists()) {
             return $this->errorResponse('Product is already associated with this supplier', null, 409);
         }
 
-        // Attach product to supplier
-        $supplier->products()->attach($product->id, [
+        // Link product using repository
+        $this->supplierRepo->linkProduct($uuid, $productUuid, [
             'supplier_price' => $request->input('supplier_price'),
             'lead_time_days' => $request->input('lead_time_days'),
             'is_preferred' => $request->boolean('is_preferred', false),
@@ -230,15 +236,7 @@ class SupplierController extends Controller
      */
     public function removeProduct(string $uuid, string $productUuid): JsonResponse
     {
-        $supplier = Supplier::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
-
-        $product = Product::where('uuid', $productUuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
-
-        $supplier->products()->detach($product->id);
+        $this->supplierRepo->unlinkProduct($uuid, $productUuid);
 
         return $this->successResponse(
             null,
@@ -257,45 +255,13 @@ class SupplierController extends Controller
             'to_date' => ['nullable', 'date'],
         ]);
 
-        $supplier = Supplier::where('uuid', $uuid)
-            ->where('store_id', Auth::user()->store_id)
-            ->firstOrFail();
-
-        // Get purchase order items for this supplier
-        $query = DB::table('purchase_order_items as poi')
-            ->join('purchase_orders as po', 'poi.purchase_order_id', '=', 'po.id')
-            ->join('products as p', 'poi.product_id', '=', 'p.id')
-            ->where('po.supplier_id', $supplier->id)
-            ->whereIn('po.status', ['submitted', 'partial', 'received'])
-            ->select(
-                'p.uuid as product_uuid',
-                'p.name as product_name',
-                'p.sku as product_sku',
-                'poi.unit_price',
-                'poi.quantity_ordered',
-                'po.order_date',
-                'po.po_number'
-            );
-
-        // Filter by product if specified
-        if ($request->filled('product_id')) {
-            $product = Product::where('uuid', $request->input('product_id'))
-                ->where('store_id', Auth::user()->store_id)
-                ->firstOrFail();
-
-            $query->where('poi.product_id', $product->id);
-        }
-
-        // Filter by date range
-        if ($request->filled('from_date')) {
-            $query->where('po.order_date', '>=', $request->input('from_date'));
-        }
-
-        if ($request->filled('to_date')) {
-            $query->where('po.order_date', '<=', $request->input('to_date'));
-        }
-
-        $priceHistory = $query->orderBy('po.order_date', 'desc')->get();
+        // Use repository method to get price history
+        $priceHistory = $this->supplierRepo->getPriceHistory(
+            $uuid,
+            $request->input('product_id'),
+            $request->input('from_date'),
+            $request->input('to_date')
+        );
 
         // Convert unit_price from centavos to pesos
         $priceHistory = $priceHistory->map(function ($item) {

@@ -81,4 +81,18 @@ class DeliveryRepository extends BaseRepository implements DeliveryRepositoryInt
             ->orderBy('scheduled_date', 'asc')
             ->get();
     }
+
+    public function getThisWeekByStatus(array $statuses, int $limit = 10): Collection
+    {
+        $startOfWeek = Carbon::now()->startOfWeek();
+        $endOfWeek = Carbon::now()->endOfWeek();
+
+        return $this->newQuery()
+            ->whereBetween('scheduled_date', [$startOfWeek, $endOfWeek])
+            ->whereIn('status', $statuses)
+            ->with(['sale:id,uuid,sale_number', 'customer:id,uuid,name'])
+            ->orderBy('scheduled_date')
+            ->limit($limit)
+            ->get();
+    }
 }

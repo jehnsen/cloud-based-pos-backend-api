@@ -5,11 +5,21 @@ namespace App\Services;
 use App\Models\Sale;
 use App\Models\Delivery;
 use App\Models\Customer;
+use App\Repositories\Contracts\CreditTransactionRepositoryInterface;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 
 class ReceiptService
 {
+    /**
+     * Create a new receipt service instance.
+     *
+     * @param CreditTransactionRepositoryInterface $creditTransactionRepository
+     */
+    public function __construct(
+        protected CreditTransactionRepositoryInterface $creditTransactionRepository
+    ) {
+    }
     /**
      * Generate receipt data for a sale.
      *
@@ -332,17 +342,18 @@ class ReceiptService
     {
         $customer->load('store');
 
-        // Get transactions within date range
-        $transactions = $customer->creditTransactions()
-            ->whereBetween('transaction_date', [$startDate, $endDate])
-            ->orderBy('transaction_date')
-            ->orderBy('created_at')
-            ->get();
+        // Get transactions within date range using repository
+        $transactions = $this->creditTransactionRepository->getStatementTransactions(
+            $customer->id,
+            \Carbon\Carbon::parse($startDate),
+            \Carbon\Carbon::parse($endDate)
+        );
 
-        // Calculate opening balance
-        $openingBalance = $customer->creditTransactions()
-            ->where('transaction_date', '<', $startDate)
-            ->sum('amount');
+        // Calculate opening balance using repository
+        $openingBalance = $this->creditTransactionRepository->getOpeningBalance(
+            $customer->id,
+            \Carbon\Carbon::parse($startDate)
+        );
 
         $runningBalance = $openingBalance;
         $totalCharges = 0;
@@ -446,16 +457,12 @@ class ReceiptService
             'over_90' => 0,      // Over 90 days
         ];
 
-        // Get unpaid charges
-        $unpaidCharges = $customer->creditTransactions()
-            ->where('type', 'charge')
-            ->where('is_reversed', false)
-            ->whereColumn('amount', '>', 'paid_amount')
-            ->get();
+        // Get unpaid charges using repository
+        $unpaidCharges = $this->creditTransactionRepository->getUnpaidInvoices($customer->id);
 
         foreach ($unpaidCharges as $charge) {
             $daysOld = $charge->transaction_date->diffInDays($now);
-            $unpaidAmount = $charge->amount - $charge->paid_amount;
+            $unpaidAmount = $charge->amount;
 
             if ($daysOld <= 30) {
                 $buckets['current'] += $unpaidAmount;

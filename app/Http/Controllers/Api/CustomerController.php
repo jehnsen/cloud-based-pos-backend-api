@@ -10,7 +10,10 @@ use App\Http\Requests\Customer\UpdateCustomerRequest;
 use App\Http\Resources\CreditAgingResource;
 use App\Http\Resources\CreditTransactionResource;
 use App\Http\Resources\CustomerResource;
-use App\Models\Customer;
+use App\Repositories\Contracts\CustomerRepositoryInterface;
+use App\Repositories\Contracts\CreditTransactionRepositoryInterface;
+use App\Repositories\Criteria\FilterByColumn;
+use App\Repositories\Criteria\SearchMultipleColumns;
 use App\Services\CreditService;
 use App\Traits\ApiResponse;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -25,10 +28,17 @@ class CustomerController extends Controller
     use ApiResponse;
 
     protected CreditService $creditService;
+    protected CustomerRepositoryInterface $customerRepo;
+    protected CreditTransactionRepositoryInterface $creditTransactionRepo;
 
-    public function __construct(CreditService $creditService)
-    {
+    public function __construct(
+        CreditService $creditService,
+        CustomerRepositoryInterface $customerRepo,
+        CreditTransactionRepositoryInterface $creditTransactionRepo
+    ) {
         $this->creditService = $creditService;
+        $this->customerRepo = $customerRepo;
+        $this->creditTransactionRepo = $creditTransactionRepo;
     }
 
     /**
@@ -36,43 +46,48 @@ class CustomerController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Customer::query();
+        // Reset criteria for fresh query
+        $this->customerRepo->resetCriteria();
 
-        // Search by name, phone, email
+        // Search by name, phone, email, code
         if ($request->has('q')) {
-            $search = $request->input('q');
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('phone', 'LIKE', "%{$search}%")
-                    ->orWhere('mobile', 'LIKE', "%{$search}%")
-                    ->orWhere('email', 'LIKE', "%{$search}%")
-                    ->orWhere('code', 'LIKE', "%{$search}%");
-            });
+            $this->customerRepo->pushCriteria(
+                new SearchMultipleColumns(
+                    $request->input('q'),
+                    ['name', 'phone', 'mobile', 'email', 'code']
+                )
+            );
         }
 
         // Filter by type
         if ($request->has('type')) {
-            $query->where('type', $request->input('type'));
+            $this->customerRepo->pushCriteria(
+                new FilterByColumn('type', $request->input('type'))
+            );
         }
 
         // Filter by active status
         if ($request->has('is_active')) {
-            $query->where('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN));
+            $this->customerRepo->pushCriteria(
+                new FilterByColumn('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN))
+            );
         }
 
         // Filter by has outstanding balance
         if ($request->boolean('has_outstanding_balance')) {
-            $query->where('total_outstanding', '>', 0);
+            $this->customerRepo->pushCriteria(
+                new FilterByColumn('total_outstanding', 0, '>')
+            );
         }
 
         // Sorting
         $sortBy = $request->input('sort_by', 'name');
         $sortOrder = $request->input('sort_order', 'asc');
-        $query->orderBy($sortBy, $sortOrder);
+        $this->customerRepo->orderBy($sortBy, $sortOrder);
 
         // Pagination
         $perPage = $request->input('per_page', 15);
-        $customers = $query->paginate($perPage);
+        $customers = $this->customerRepo->paginate($perPage);
 
         return $this->paginatedResponse(
             $customers->setCollection(
@@ -113,8 +128,8 @@ class CustomerController extends Controller
                 unset($data['alternate_phone']);
             }
 
-            // Create customer
-            $customer = Customer::create($data);
+            // Create customer using repository
+            $customer = $this->customerRepo->create($data);
 
             DB::commit();
 
@@ -140,9 +155,15 @@ class CustomerController extends Controller
      */
     public function show(string $uuid): JsonResponse
     {
-        $customer = Customer::where('uuid', $uuid)
-            ->withCount('sales')
-            ->firstOrFail();
+        $customer = $this->customerRepo
+            ->resetCriteria()
+            ->with(['sales' => function ($query) {
+                $query->select('id', 'customer_id');
+            }])
+            ->findByUuidOrFail($uuid);
+
+        // Manually load sales count
+        $customer->loadCount('sales');
 
         return $this->successResponse(
             new CustomerResource($customer),
@@ -158,7 +179,7 @@ class CustomerController extends Controller
         try {
             DB::beginTransaction();
 
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
+            $customer = $this->customerRepo->findByUuidOrFail($uuid);
             $data = $request->validated();
 
             // Map business_name to company_name
@@ -204,7 +225,7 @@ class CustomerController extends Controller
     public function destroy(string $uuid): JsonResponse
     {
         try {
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
+            $customer = $this->customerRepo->findByUuidOrFail($uuid);
 
             // Check if customer has outstanding balance
             if ($customer->getRawOriginal('total_outstanding') > 0) {
@@ -234,28 +255,38 @@ class CustomerController extends Controller
      */
     public function transactions(Request $request, string $uuid): JsonResponse
     {
-        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $customer = $this->customerRepo->findByUuidOrFail($uuid);
 
-        $query = $customer->creditTransactions()
-            ->with(['sale', 'user'])
-            ->orderBy('transaction_date', 'desc');
+        // Reset criteria for fresh query
+        $this->creditTransactionRepo->resetCriteria();
+
+        // Get base query filtered by customer
+        $this->creditTransactionRepo->where('customer_id', $customer->id);
+
+        // Load relationships
+        $this->creditTransactionRepo->with(['sale', 'user']);
 
         // Filter by type
         if ($request->has('type')) {
-            $query->where('type', $request->input('type'));
+            $this->creditTransactionRepo->pushCriteria(
+                new FilterByColumn('type', $request->input('type'))
+            );
         }
 
         // Filter by date range
         if ($request->has('start_date') && $request->has('end_date')) {
-            $query->whereBetween('transaction_date', [
+            $this->creditTransactionRepo->where('transaction_date', [
                 $request->input('start_date'),
-                $request->input('end_date'),
-            ]);
+                $request->input('end_date')
+            ], 'BETWEEN');
         }
+
+        // Sorting
+        $this->creditTransactionRepo->orderBy('transaction_date', 'desc');
 
         // Pagination
         $perPage = $request->input('per_page', 15);
-        $transactions = $query->paginate($perPage);
+        $transactions = $this->creditTransactionRepo->paginate($perPage);
 
         return $this->paginatedResponse(
             $transactions->setCollection(
@@ -279,7 +310,7 @@ class CustomerController extends Controller
     public function recordPayment(RecordPaymentRequest $request, string $uuid): JsonResponse
     {
         try {
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
+            $customer = $this->customerRepo->findByUuidOrFail($uuid);
 
             $result = $this->creditService->receivePayment(
                 $customer,
@@ -306,7 +337,7 @@ class CustomerController extends Controller
     public function adjustCreditLimit(AdjustCreditLimitRequest $request, string $uuid): JsonResponse
     {
         try {
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
+            $customer = $this->customerRepo->findByUuidOrFail($uuid);
 
             $updatedCustomer = $this->creditService->adjustCreditLimit(
                 $customer,
@@ -333,7 +364,7 @@ class CustomerController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
         ]);
 
-        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $customer = $this->customerRepo->findByUuidOrFail($uuid);
 
         $statement = $this->creditService->getCustomerStatement(
             $customer,
@@ -354,7 +385,7 @@ class CustomerController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
         ]);
 
-        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $customer = $this->customerRepo->findByUuidOrFail($uuid);
 
         $statement = $this->creditService->getCustomerStatement(
             $customer,
@@ -383,7 +414,7 @@ class CustomerController extends Controller
             'message' => 'nullable|string|max:500',
         ]);
 
-        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $customer = $this->customerRepo->findByUuidOrFail($uuid);
 
         if ($customer->getRawOriginal('total_outstanding') <= 0) {
             return $this->errorResponse('Customer has no outstanding balance', 422);
@@ -410,30 +441,31 @@ class CustomerController extends Controller
      */
     public function creditOverview(): JsonResponse
     {
-        $storeId = auth()->user()->store_id;
+        $stats = $this->customerRepo->getCreditOverviewStats();
 
-        $stats = [
-            'total_customers_with_credit' => Customer::where('store_id', $storeId)
-                ->where('allow_credit', true)
-                ->count(),
+        // Convert from centavos to pesos for display
+        $totalOutstanding = $stats['total_outstanding'] / 100;
+        $totalCreditLimit = $stats['total_credit_limit'] / 100;
+        $availableCredit = $stats['available_credit'] / 100;
 
-            'total_outstanding' => Customer::where('store_id', $storeId)
-                ->sum(DB::raw('CAST(total_outstanding AS SIGNED)')) / 100,
+        // Count customers with credit enabled
+        $this->customerRepo->resetCriteria();
+        $totalCustomersWithCredit = $this->customerRepo
+            ->where('allow_credit', true)
+            ->count();
 
-            'total_credit_limit' => Customer::where('store_id', $storeId)
-                ->sum(DB::raw('CAST(credit_limit AS SIGNED)')) / 100,
-
-            'customers_with_balance' => Customer::where('store_id', $storeId)
-                ->where('total_outstanding', '>', 0)
-                ->count(),
+        $response = [
+            'total_customers_with_credit' => $totalCustomersWithCredit,
+            'total_outstanding' => $totalOutstanding,
+            'total_credit_limit' => $totalCreditLimit,
+            'customers_with_balance' => $stats['customers_with_balance'],
+            'total_available_credit' => $availableCredit,
+            'average_credit_utilization' => $totalCreditLimit > 0
+                ? round(($totalOutstanding / $totalCreditLimit) * 100, 2)
+                : 0,
         ];
 
-        $stats['total_available_credit'] = $stats['total_credit_limit'] - $stats['total_outstanding'];
-        $stats['average_credit_utilization'] = $stats['total_credit_limit'] > 0
-            ? round(($stats['total_outstanding'] / $stats['total_credit_limit']) * 100, 2)
-            : 0;
-
-        return $this->successResponse($stats, 'Credit overview retrieved successfully');
+        return $this->successResponse($response, 'Credit overview retrieved successfully');
     }
 
     /**
