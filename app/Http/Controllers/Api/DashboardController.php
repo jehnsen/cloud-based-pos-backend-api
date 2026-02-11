@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\CacheService;
 use App\Services\DashboardService;
 use App\Services\CreditService;
 use App\Services\InventoryService;
@@ -20,19 +21,31 @@ class DashboardController extends Controller
     protected DashboardService $dashboardService;
     protected CreditService $creditService;
     protected InventoryService $inventoryService;
+    protected CacheService $cacheService;
 
     public function __construct(
         DashboardService $dashboardService,
         CreditService $creditService,
-        InventoryService $inventoryService
+        InventoryService $inventoryService,
+        CacheService $cacheService
     ) {
         $this->dashboardService = $dashboardService;
         $this->creditService = $creditService;
         $this->inventoryService = $inventoryService;
+        $this->cacheService = $cacheService;
+    }
+
+    /**
+     * Check if cache should be bypassed based on request parameter.
+     */
+    private function shouldBypassCache(Request $request): bool
+    {
+        return $request->boolean('fresh') || $request->boolean('no_cache');
     }
 
     /**
      * Get today's summary statistics.
+     * Cached for 2 minutes, use ?fresh=1 to bypass cache.
      *
      * @param Request $request
      * @return JsonResponse
@@ -40,13 +53,26 @@ class DashboardController extends Controller
     public function summary(Request $request): JsonResponse
     {
         $store = $request->user()->store;
-        $summary = $this->dashboardService->getTodaySummary($store);
+
+        // Bypass cache if requested
+        if ($this->shouldBypassCache($request)) {
+            $summary = $this->dashboardService->getTodaySummary($store);
+        } else {
+            $cacheKey = "dashboard:summary:" . date('Y-m-d');
+            $summary = $this->cacheService->remember(
+                $cacheKey,
+                'dashboard_summary',
+                fn() => $this->dashboardService->getTodaySummary($store),
+                $store->id
+            );
+        }
 
         return $this->successResponse($summary);
     }
 
     /**
      * Get sales trend data for line chart.
+     * Cached for 5 minutes, use ?fresh=1 to bypass cache.
      *
      * @param Request $request
      * @return JsonResponse
@@ -61,7 +87,18 @@ class DashboardController extends Controller
             return $this->errorResponse('Days parameter must be between 1 and 365', 422);
         }
 
-        $trend = $this->dashboardService->getSalesTrend($store, $days);
+        // Bypass cache if requested
+        if ($this->shouldBypassCache($request)) {
+            $trend = $this->dashboardService->getSalesTrend($store, $days);
+        } else {
+            $cacheKey = "dashboard:sales_trend:{$days}";
+            $trend = $this->cacheService->remember(
+                $cacheKey,
+                'sales_trend',
+                fn() => $this->dashboardService->getSalesTrend($store, $days),
+                $store->id
+            );
+        }
 
         return $this->successResponse([
             'period' => "{$days} days",
@@ -133,6 +170,7 @@ class DashboardController extends Controller
 
     /**
      * Get credit aging summary.
+     * Cached for 10 minutes (expensive query), use ?fresh=1 to bypass cache.
      *
      * @param Request $request
      * @return JsonResponse
@@ -140,7 +178,19 @@ class DashboardController extends Controller
     public function creditAging(Request $request): JsonResponse
     {
         $store = $request->user()->store;
-        $agingReport = $this->creditService->getAgingReport($store);
+
+        // Bypass cache if requested
+        if ($this->shouldBypassCache($request)) {
+            $agingReport = $this->creditService->getAgingReport($store);
+        } else {
+            $cacheKey = "dashboard:credit_aging";
+            $agingReport = $this->cacheService->remember(
+                $cacheKey,
+                'credit_aging',
+                fn() => $this->creditService->getAgingReport($store),
+                $store->id
+            );
+        }
 
         return $this->successResponse([
             'summary' => $agingReport['summary'],

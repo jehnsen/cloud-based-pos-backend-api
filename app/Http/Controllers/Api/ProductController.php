@@ -9,6 +9,7 @@ use App\Http\Requests\Product\StoreProductRequest;
 use App\Http\Requests\Product\UpdateProductRequest;
 use App\Http\Resources\ProductCollection;
 use App\Http\Resources\ProductResource;
+use App\Http\Resources\StockAdjustmentResource;
 use App\Models\Product;
 use App\Repositories\Contracts\ProductRepositoryInterface;
 use App\Repositories\Criteria\ActiveOnly;
@@ -17,7 +18,9 @@ use App\Repositories\Criteria\LowStockProducts;
 use App\Repositories\Criteria\OrderBy;
 use App\Repositories\Criteria\SearchMultipleColumns;
 use App\Repositories\Criteria\WithRelations;
+use App\Services\InventoryService;
 use App\Traits\ApiResponse;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,10 +32,14 @@ class ProductController extends Controller
     use ApiResponse;
 
     protected ProductRepositoryInterface $productRepo;
+    protected InventoryService $inventoryService;
 
-    public function __construct(ProductRepositoryInterface $productRepo)
-    {
+    public function __construct(
+        ProductRepositoryInterface $productRepo,
+        InventoryService $inventoryService
+    ) {
         $this->productRepo = $productRepo;
+        $this->inventoryService = $inventoryService;
     }
 
     /**
@@ -331,17 +338,32 @@ class ProductController extends Controller
 
     /**
      * Get stock adjustment history for a product.
-     * Note: This will be implemented when InventoryService is created.
      */
     public function stockHistory(Request $request, string $uuid): JsonResponse
     {
         $product = $this->productRepo->findByUuidOrFail($uuid);
 
-        // Placeholder - will be implemented with InventoryService
-        return $this->successResponse(
-            [],
-            'Stock history will be available after InventoryService implementation'
-        );
+        // Parse optional date range filters
+        $startDate = $request->has('start_date')
+            ? Carbon::parse($request->input('start_date'))
+            : null;
+        $endDate = $request->has('end_date')
+            ? Carbon::parse($request->input('end_date'))
+            : null;
+
+        // Get stock history from InventoryService
+        $history = $this->inventoryService->getStockHistory($product, $startDate, $endDate);
+
+        return $this->successResponse([
+            'product' => [
+                'uuid' => $product->uuid,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'current_stock' => $product->current_stock,
+            ],
+            'history' => StockAdjustmentResource::collection($history),
+            'total_records' => $history->count(),
+        ], 'Stock history retrieved successfully');
     }
 
     /**

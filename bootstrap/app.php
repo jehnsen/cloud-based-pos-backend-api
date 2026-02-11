@@ -26,9 +26,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'branch.access' => \App\Http\Middleware\EnsureBranchAccess::class,
             'permission' => \App\Http\Middleware\CheckPermission::class,
             'log.activity' => \App\Http\Middleware\LogActivity::class,
+            'cache.headers' => \App\Http\Middleware\AddCacheHeaders::class,
         ]);
 
         // Configure API middleware group
+        // Note: HandleCors middleware is automatically included in Laravel 11 global middleware
+        // CORS settings are configured in config/cors.php with environment-based origins
+        // Set CORS_ALLOWED_ORIGIN_1 and CORS_ALLOWED_ORIGIN_2 in your .env file
         $middleware->group('api', [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             'throttle:api',

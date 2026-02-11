@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\CustomersExport;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customer\AdjustCreditLimitRequest;
 use App\Http\Requests\Customer\RecordPaymentRequest;
@@ -22,6 +23,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CustomerController extends Controller
 {
@@ -503,7 +505,7 @@ class CustomerController extends Controller
     /**
      * Export customers to Excel.
      */
-    public function export(Request $request)
+    public function export(Request $request): BinaryFileResponse
     {
         $request->validate([
             'format' => 'nullable|in:xlsx,csv',
@@ -511,9 +513,34 @@ class CustomerController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
-        // TODO: Implement Excel export using Laravel Excel
-        // This is a placeholder for the actual implementation
+        // Reset criteria for fresh query
+        $this->customerRepo->resetCriteria();
 
-        return $this->errorResponse('Export functionality not yet implemented', 501);
+        // Apply filters
+        if ($request->has('type')) {
+            $this->customerRepo->pushCriteria(
+                new FilterByColumn('type', $request->input('type'))
+            );
+        }
+
+        if ($request->has('is_active')) {
+            $this->customerRepo->pushCriteria(
+                new FilterByColumn('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN))
+            );
+        }
+
+        // Get all customers (no pagination for export)
+        $customers = $this->customerRepo->all();
+
+        // Determine file format and extension
+        $format = $request->input('format', 'xlsx');
+        $extension = $format === 'csv' ? 'csv' : 'xlsx';
+        $writerType = $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX;
+
+        // Generate filename with timestamp
+        $filename = 'customers_' . now()->format('Y-m-d_His') . '.' . $extension;
+
+        // Export and download
+        return Excel::download(new CustomersExport($customers), $filename, $writerType);
     }
 }

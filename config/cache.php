@@ -104,4 +104,17 @@ return [
 
     'prefix' => env('CACHE_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_cache_'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Report Caching
+    |--------------------------------------------------------------------------
+    |
+    | Enable caching for expensive reports and dashboard queries.
+    | When enabled, automatic cache invalidation will trigger when data changes.
+    | Set to false to disable report caching and always fetch fresh data.
+    |
+    */
+
+    'enable_reports' => env('CACHE_ENABLE_REPORTS', true),
+
 ];
