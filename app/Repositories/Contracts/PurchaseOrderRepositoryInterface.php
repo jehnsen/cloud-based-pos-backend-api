@@ -43,4 +43,9 @@ interface PurchaseOrderRepositoryInterface extends BaseRepositoryInterface
      * Get purchases by supplier (report)
      */
     public function getPurchasesBySupplier(Carbon $from, Carbon $to): Collection;
+
+    /**
+     * Get unpaid POs by supplier (FIFO order for payment allocation)
+     */
+    public function getUnpaidBySupplier(int $supplierId, ?array $poUuids = null): Collection;
 }

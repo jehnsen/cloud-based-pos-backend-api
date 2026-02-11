@@ -22,10 +22,14 @@ class PurchaseOrder extends Model
         'user_id',
         'po_number',
         'status',
+        'payment_status',
         'order_date',
         'expected_delivery_date',
         'received_date',
+        'payment_due_date',
+        'payment_completed_date',
         'total_amount',
+        'amount_paid',
         'notes',
         'terms_and_conditions',
     ];
@@ -36,6 +40,8 @@ class PurchaseOrder extends Model
             'order_date' => 'date',
             'expected_delivery_date' => 'date',
             'received_date' => 'date',
+            'payment_due_date' => 'date',
+            'payment_completed_date' => 'date',
         ];
     }
 
@@ -60,8 +66,21 @@ class PurchaseOrder extends Model
         return $this->hasMany(PurchaseOrderItem::class);
     }
 
+    public function payableTransactions(): HasMany
+    {
+        return $this->hasMany(PayableTransaction::class);
+    }
+
     // Accessors & Mutators for centavos to pesos conversion
     protected function totalAmount(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value / 100,
+            set: fn ($value) => $value * 100,
+        );
+    }
+
+    protected function amountPaid(): Attribute
     {
         return Attribute::make(
             get: fn ($value) => $value / 100,
@@ -88,5 +107,16 @@ class PurchaseOrder extends Model
     public function scopePending($query)
     {
         return $query->whereIn('status', ['submitted', 'partial']);
+    }
+
+    public function scopeUnpaid($query)
+    {
+        return $query->whereIn('payment_status', ['unpaid', 'partial']);
+    }
+
+    public function scopePaymentOverdue($query)
+    {
+        return $query->unpaid()
+            ->where('payment_due_date', '<', now());
     }
 }

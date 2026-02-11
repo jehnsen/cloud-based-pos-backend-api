@@ -53,13 +53,16 @@ class DatabaseSeeder extends Seeder
         $this->command->info('11/14 - Seeding Stock Adjustments...');
         $this->call(StockAdjustmentSeeder::class);
 
-        $this->command->info('12/14 - Seeding Purchase Orders...');
+        $this->command->info('12/15 - Seeding Purchase Orders...');
         $this->call(PurchaseOrderSeeder::class);
 
-        $this->command->info('13/14 - Seeding Deliveries...');
+        $this->command->info('13/15 - Seeding Payable Transactions (AP invoices & payments)...');
+        $this->call(PayableTransactionSeeder::class);
+
+        $this->command->info('14/15 - Seeding Deliveries...');
         $this->call(DeliverySeeder::class);
 
-        $this->command->info('14/14 - Seeding Notifications...');
+        $this->command->info('15/15 - Seeding Notifications...');
         $this->call(NotificationSeeder::class);
 
         $this->command->newLine();
@@ -74,7 +77,8 @@ class DatabaseSeeder extends Seeder
         $this->command->line('  - Suppliers: 5');
         $this->command->line('  - Customers: 10');
         $this->command->line('  - Sales: 200+ over last 90 days');
-        $this->command->line('  - Purchase Orders: 10');
+        $this->command->line('  - Purchase Orders: 10 (with AP invoices)');
+        $this->command->line('  - Payable Transactions: AP invoices & payments');
         $this->command->line('  - Deliveries: 15');
         $this->command->newLine();
         $this->command->info('🔐 Login Credentials:');

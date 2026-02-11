@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Traits\BelongsToStore;
 use App\Traits\HasUuid;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -31,6 +32,9 @@ class Supplier extends Model
         'contact_person_phone',
         'payment_terms_days',
         'lead_time_days',
+        'total_outstanding',
+        'total_purchases',
+        'payment_rating',
         'notes',
         'is_active',
     ];
@@ -62,9 +66,36 @@ class Supplier extends Model
         return $this->hasMany(PurchaseOrder::class);
     }
 
+    public function payableTransactions(): HasMany
+    {
+        return $this->hasMany(PayableTransaction::class);
+    }
+
+    // Accessors & Mutators for centavos to pesos conversion
+    protected function totalOutstanding(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value / 100,
+            set: fn ($value) => $value * 100,
+        );
+    }
+
+    protected function totalPurchases(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value / 100,
+            set: fn ($value) => $value * 100,
+        );
+    }
+
     // Scopes
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    public function scopeWithOutstanding($query)
+    {
+        return $query->where('total_outstanding', '>', 0);
     }
 }

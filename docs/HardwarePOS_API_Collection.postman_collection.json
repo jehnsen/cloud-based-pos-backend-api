@@ -3428,6 +3428,221 @@
 				}
 			],
 			"description": "Settings and configuration management"
+		},
+		{
+			"name": "13. Accounts Payable (AP)",
+			"item": [
+				{
+					"name": "AP Overview",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/ap/overview",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "ap", "overview"]
+						},
+						"description": "Get accounts payable overview statistics including total outstanding, suppliers with balance, total purchases, and average payment terms"
+					},
+					"response": []
+				},
+				{
+					"name": "AP Aging Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/ap/aging",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "ap", "aging"]
+						},
+						"description": "Get accounts payable aging report with 4 buckets (current, 31-60 days, 61-90 days, over 90 days)"
+					},
+					"response": []
+				},
+				{
+					"name": "Overdue Payables",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/ap/overdue",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "ap", "overdue"]
+						},
+						"description": "Get suppliers with overdue invoices"
+					},
+					"response": []
+				},
+				{
+					"name": "Payment Schedule",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/ap/payment-schedule?days=30",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "ap", "payment-schedule"],
+							"query": [
+								{
+									"key": "days",
+									"value": "30",
+									"description": "Number of days to look ahead (1-365)"
+								}
+							]
+						},
+						"description": "Get upcoming payments due to suppliers"
+					},
+					"response": []
+				},
+				{
+					"name": "Disbursement Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/ap/disbursement-report?start_date=2024-01-01&end_date=2024-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "ap", "disbursement-report"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2024-01-01",
+									"description": "Start date (YYYY-MM-DD)"
+								},
+								{
+									"key": "end_date",
+									"value": "2024-12-31",
+									"description": "End date (YYYY-MM-DD)"
+								}
+							]
+						},
+						"description": "Get report of payments made to suppliers in date range, grouped by payment method"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Supplier Payables",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/payables?type=invoice&per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "payables"],
+							"query": [
+								{
+									"key": "type",
+									"value": "invoice",
+									"description": "Filter by type (invoice, payment, adjustment)",
+									"disabled": true
+								},
+								{
+									"key": "per_page",
+									"value": "15",
+									"description": "Items per page"
+								}
+							],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Get supplier's payable transactions (invoices, payments, adjustments)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Supplier Ledger",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/ledger?per_page=15",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "ledger"],
+							"query": [
+								{
+									"key": "per_page",
+									"value": "15"
+								}
+							],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Get supplier's AP ledger (alias for payables)"
+					},
+					"response": []
+				},
+				{
+					"name": "Make Payment to Supplier",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 250000,\n    \"payment_method\": \"bank_transfer\",\n    \"reference_number\": \"BT-2024-001\",\n    \"invoice_ids\": [\"po-uuid-1\", \"po-uuid-2\"],\n    \"notes\": \"Payment for PO-2024-001 and PO-2024-002\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/payments",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "payments"],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Make payment to supplier with FIFO allocation. Amount in centavos (250000 = ₱2,500). Payment methods: cash, bank_transfer, check, online. If invoice_ids not provided, payment allocated to oldest invoices (FIFO)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Supplier Statement",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/:uuid/statement?start_date=2024-01-01&end_date=2024-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", ":uuid", "statement"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2024-01-01",
+									"description": "Statement start date (YYYY-MM-DD)"
+								},
+								{
+									"key": "end_date",
+									"value": "2024-12-31",
+									"description": "Statement end date (YYYY-MM-DD)"
+								}
+							],
+							"variable": [
+								{
+									"key": "uuid",
+									"value": "supplier-uuid-here"
+								}
+							]
+						},
+						"description": "Get supplier statement for date range (JSON format)"
+					},
+					"response": []
+				}
+			],
+			"description": "Accounts Payable management - Track supplier invoices, payments, aging analysis, and statements. Features FIFO payment allocation and 4-bucket aging reports. All data returned as JSON for frontend processing."
 		}
 	]
 }

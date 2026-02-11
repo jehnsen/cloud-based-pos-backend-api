@@ -57,3 +57,36 @@ php artisan scramble:docs
 
 Email: juan@jmhardware.ph
 Password: password
+
+
+
+TODOS:
+---------------------------------------------------------------------------
+critical fix:
+
+1. Customer Export to Excel - CustomerController.php:517
+Returns 501 error but documented as available
+Useful for reporting and accounting
+Action: implement using Laravel Excel
+
+2. Stock History Endpoint - ProductController.php:340-343
+
+Returns empty array
+Important for inventory auditing
+Action: Wire up the existing InventoryService
+
+3.  Add Integration Tests
+
+Protect against regressions when adding features
+Test critical flows: sales, refunds, credit payments, stock adjustments
+Why: Prevents breaking existing functionality
+
+4. Report Caching (what if the UI will will not display the updated data in database?)
+Dashboard and reports can be slow with large datasets
+Action: Cache expensive queries (1-hour TTL)
+
+5. handle CORS for API endpoints
+- configure to accept 1 or 2 origins only for development and production
+
+6. Check if 
+

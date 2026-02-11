@@ -48,18 +48,19 @@ This prevents floating-point precision errors in financial calculations.
 {
     "laravel/framework": "^11.0",
     "laravel/sanctum": "^4.0",
-    "barryvdh/laravel-dompdf": "^2.0",
-    "maatwebsite/excel": "^3.1",
     "dedoc/scramble": "^0.11"
 }
 ```
 
+**Note:** DomPDF and Laravel Excel packages may be installed but are not used. All PDF/Excel generation is handled by the frontend.
+
 ### Key Packages
 - **Laravel Sanctum** - API authentication with tokens
-- **DomPDF** - PDF generation (receipts, statements, reports)
-- **Laravel Excel** - Excel export functionality
 - **Scramble** - API documentation generation
-- **Spatie Activity Log** - Audit trail and activity logging (implied)
+- **Spatie Activity Log** - Audit trail and activity logging
+
+### Architecture Note
+This is a **pure JSON API backend**. All PDF generation, Excel exports, and UI rendering are handled by the frontend application. The backend returns structured JSON data only.
 
 ---
 
@@ -110,14 +111,21 @@ This prevents floating-point precision errors in financial calculations.
   - Types: charge, payment, adjustment
   - Payment allocation: FIFO (First In, First Out)
 
-#### Supply Chain
+#### Supply Chain & Accounts Payable
 - **Supplier** - Supplier management
   - Belongs to: Store
-  - Has many: PurchaseOrders, SupplierProducts
+  - Has many: PurchaseOrders, PayableTransactions, SupplierProducts
+  - AP Fields: total_outstanding, total_purchases, payment_rating
 - **PurchaseOrder** - Purchase orders
   - Belongs to: Store, Supplier
-  - Has many: PurchaseOrderItems
+  - Has many: PurchaseOrderItems, PayableTransactions
   - Statuses: draft, submitted, received, cancelled
+  - Payment tracking: payment_status, amount_paid, payment_due_date
+- **PayableTransaction** - Accounts payable ledger
+  - Belongs to: Store, Supplier, PurchaseOrder (optional), User
+  - Types: invoice, payment, adjustment
+  - Payment allocation: FIFO (First In, First Out)
+  - Fields: uuid, amount, balance_before, balance_after, transaction_date, due_date, paid_date
 - **Delivery** - Delivery tracking
   - Belongs to: Store, Customer, Sale (optional), Driver (User)
   - Has many: DeliveryItems
@@ -133,7 +141,7 @@ This prevents floating-point precision errors in financial calculations.
 
 ## API Endpoints Overview
 
-### Complete API Structure (150+ endpoints)
+### Complete API Structure (160+ endpoints)
 
 #### 1. Authentication (`/auth`)
 - POST `/login` - User authentication (returns Bearer token)
@@ -166,8 +174,6 @@ This prevents floating-point precision errors in financial calculations.
 - POST `/{uuid}/void` - Void sale
 - POST `/{uuid}/refund` - Full or partial refund
 - GET `/{uuid}/receipt` - Get receipt data (JSON)
-- GET `/{uuid}/receipt/pdf` - Download receipt PDF
-- POST `/{uuid}/receipt/send` - Send receipt (email/SMS)
 - POST `/hold` - Hold/pause transaction
 - GET `/held/list` - List held transactions
 - GET `/held/{id}/resume` - Resume held transaction
@@ -180,12 +186,9 @@ This prevents floating-point precision errors in financial calculations.
 - POST `/{uuid}/payments` - Record payment (auto-allocates FIFO)
 - PUT `/{uuid}/credit-limit` - Adjust credit limit
 - GET `/{uuid}/statement` - Customer statement (JSON)
-- GET `/{uuid}/statement/pdf` - Download statement PDF
-- POST `/{uuid}/send-reminder` - Send payment reminder
-- GET `/credit/overview` - Credit statistics
+- GET `/credit/overview` - Credit statistics (AR)
 - GET `/credit/aging` - Aging analysis (4 buckets)
 - GET `/credit/overdue` - Overdue accounts
-- GET `/export` - Export to Excel
 
 #### 7. Dashboard (`/dashboard`)
 - GET `/summary` - Today's summary stats
@@ -206,24 +209,42 @@ This prevents floating-point precision errors in financial calculations.
 - DELETE `/{uuid}/products/{productUuid}` - Unlink product
 - GET `/{uuid}/price-history` - Price history
 
-#### 9. Purchase Orders (`/purchase-orders`)
+#### 9. Accounts Payable (`/ap`)
+**Dashboard & Reports:**
+- GET `/overview` - AP statistics and overview
+- GET `/aging` - 4-bucket aging analysis (current, 31-60, 61-90, over-90)
+- GET `/overdue` - Suppliers with overdue invoices
+- GET `/payment-schedule` - Upcoming payments due
+- GET `/disbursement-report` - Payments made report
+
+**Supplier-Specific AP:**
+- GET `/suppliers/{uuid}/payables` - Payable transactions (JSON)
+- GET `/suppliers/{uuid}/ledger` - AP ledger (alias)
+- POST `/suppliers/{uuid}/payments` - Make payment (FIFO allocation)
+- GET `/suppliers/{uuid}/statement` - Supplier statement (JSON)
+
+**Features:**
+- Automatic AP invoice creation when PO is received
+- FIFO payment allocation to oldest invoices
+- 4-bucket aging analysis
+- Complete audit trail
+
+#### 10. Purchase Orders (`/purchase-orders`)
 - Standard CRUD with workflow
 - POST `/{uuid}/submit` - Submit for approval
-- POST `/{uuid}/receive` - Receive PO (updates stock automatically)
+- POST `/{uuid}/receive` - Receive PO (updates stock automatically, creates AP invoice)
 - POST `/{uuid}/cancel` - Cancel PO
-- GET `/{uuid}/pdf` - Download PO as PDF
 
-#### 10. Deliveries (`/deliveries`)
+#### 11. Deliveries (`/deliveries`)
 - GET `/today-schedule` - Today's deliveries
 - Standard CRUD operations
 - PUT `/{uuid}/status` - Update status
 - POST `/{uuid}/proof` - Upload proof of delivery
 - GET `/{uuid}/proof/download` - Download proof
-- GET `/{uuid}/receipt` - Delivery receipt (JSON)
-- GET `/{uuid}/receipt/pdf` - Download receipt PDF
+- GET `/{uuid}/receipt` - Delivery receipt data (JSON)
 - POST `/{uuid}/assign-driver` - Assign driver
 
-#### 11. Reports (`/reports`)
+#### 12. Reports (`/reports`)
 
 **Sales Reports:**
 - GET `/sales/daily?date=YYYY-MM-DD`
@@ -248,7 +269,9 @@ This prevents floating-point precision errors in financial calculations.
 - GET `/purchases/by-supplier`
 - GET `/purchases/price-comparison`
 
-#### 12. Settings (`/settings`)
+**Note:** All reports return JSON data. PDF/Excel generation handled by frontend.
+
+#### 13. Settings (`/settings`)
 
 **Store Settings:**
 - GET/PUT `/store` - Store profile
@@ -627,7 +650,6 @@ SMS_API_KEY=your-api-key
 # Production optimization
 php artisan config:cache
 php artisan route:cache
-php artisan view:cache
 composer dump-autoload --optimize
 ```
 
@@ -638,20 +660,22 @@ composer dump-autoload --optimize
 ### Core Functionality
 ✅ Complete POS system with sales, refunds, and voids
 ✅ Inventory management with stock tracking
-✅ Customer credit management with aging reports
+✅ **Accounts Receivable (AR)** - Customer credit with aging & FIFO allocation
+✅ **Accounts Payable (AP)** - Supplier payables with aging & FIFO allocation
 ✅ Multi-payment method support (Cash, GCash, Maya, Bank Transfer, Check)
-✅ Purchase order management
+✅ Purchase order management with automatic AP invoice creation
 ✅ Delivery tracking with proof of delivery
-✅ Comprehensive reporting and analytics
-✅ Receipt generation (PDF) and sending (email/SMS)
+✅ Comprehensive reporting and analytics (JSON data)
 ✅ Multi-tenant architecture (store-level isolation)
 ✅ Role-based permissions
 ✅ Activity logging and audit trail
 ✅ Multi-branch support
+✅ **Pure JSON API** - No server-side rendering, all UI in frontend
 
 ### Business Features
-✅ Credit sales with FIFO payment allocation
-✅ Customer statements and payment reminders
+✅ AR/AP with FIFO payment allocation
+✅ 4-bucket aging analysis (current, 31-60, 61-90, over-90)
+✅ Customer & supplier statements (JSON)
 ✅ Low stock alerts and reorder points
 ✅ Sales trends and analytics
 ✅ Top products and customers

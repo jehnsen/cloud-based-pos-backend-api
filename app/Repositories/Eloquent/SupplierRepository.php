@@ -179,4 +179,52 @@ class SupplierRepository extends BaseRepository implements SupplierRepositoryInt
             ->orderBy('supplier_product.supplier_price')
             ->get();
     }
+
+    public function getWithOutstanding(): Collection
+    {
+        return $this->newQuery()
+            ->where('total_outstanding', '>', 0)
+            ->with('payableTransactions')
+            ->orderBy('total_outstanding', 'desc')
+            ->get();
+    }
+
+    public function getWithOverdueInvoices(): Collection
+    {
+        return $this->newQuery()
+            ->whereHas('payableTransactions', function ($query) {
+                $query->where('type', 'invoice')
+                    ->whereNull('paid_date')
+                    ->where('due_date', '<', Carbon::now());
+            })
+            ->with(['payableTransactions' => function ($query) {
+                $query->where('type', 'invoice')
+                    ->whereNull('paid_date')
+                    ->where('due_date', '<', Carbon::now())
+                    ->orderBy('due_date', 'asc');
+            }])
+            ->get();
+    }
+
+    public function getAPOverviewStats(): array
+    {
+        $storeId = Auth::user()->store_id;
+
+        $stats = $this->newQuery()
+            ->selectRaw('
+                COUNT(*) as total_suppliers,
+                COUNT(CASE WHEN total_outstanding > 0 THEN 1 END) as suppliers_with_balance,
+                SUM(total_outstanding) as total_outstanding,
+                SUM(total_purchases) as total_purchases
+            ')
+            ->first();
+
+        return [
+            'total_suppliers' => (int) ($stats->total_suppliers ?? 0),
+            'suppliers_with_balance' => (int) ($stats->suppliers_with_balance ?? 0),
+            'total_outstanding' => (int) ($stats->total_outstanding ?? 0),
+            'total_purchases' => (int) ($stats->total_purchases ?? 0),
+            'average_payment_terms' => (int) $this->newQuery()->avg('payment_terms_days'),
+        ];
+    }
 }

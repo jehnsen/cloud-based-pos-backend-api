@@ -57,4 +57,19 @@ interface SupplierRepositoryInterface extends BaseRepositoryInterface
      * Get price comparison report across suppliers for products
      */
     public function getPriceComparisonReport(?int $productId = null): Collection;
+
+    /**
+     * Get suppliers with outstanding balances (AP)
+     */
+    public function getWithOutstanding(): Collection;
+
+    /**
+     * Get suppliers with overdue invoices (AP)
+     */
+    public function getWithOverdueInvoices(): Collection;
+
+    /**
+     * Get AP overview statistics
+     */
+    public function getAPOverviewStats(): array;
 }

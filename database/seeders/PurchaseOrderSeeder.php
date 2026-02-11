@@ -181,6 +181,32 @@ class PurchaseOrderSeeder extends Seeder
                 ];
             }
 
+            // Determine payment tracking fields based on status
+            $paymentStatus = 'unpaid';
+            $amountPaid = 0;
+            $paymentDueDate = null;
+            $paymentCompletedDate = null;
+
+            if ($data['status'] === 'received') {
+                // Set payment due date based on supplier's payment terms
+                $paymentDueDate = $data['received_date']->copy()->addDays($supplier->payment_terms_days);
+
+                // Randomize payment status for demo data:
+                // 50% unpaid, 30% partial, 20% paid
+                $rand = rand(1, 100);
+                if ($rand <= 20) {
+                    // Fully paid
+                    $paymentStatus = 'paid';
+                    $amountPaid = $totalAmount;
+                    $paymentCompletedDate = $data['received_date']->copy()->addDays(rand(5, 25));
+                } elseif ($rand <= 50) {
+                    // Partially paid
+                    $paymentStatus = 'partial';
+                    $amountPaid = (int) ($totalAmount * rand(30, 70) / 100);
+                }
+                // else: remains unpaid (50% chance)
+            }
+
             // Create PO
             $po = PurchaseOrder::create([
                 'uuid' => Str::uuid(),
@@ -194,6 +220,10 @@ class PurchaseOrderSeeder extends Seeder
                 'expected_delivery_date' => $data['expected_delivery_date'],
                 'received_date' => $data['received_date'],
                 'total_amount' => $totalAmount,
+                'payment_status' => $paymentStatus,
+                'amount_paid' => $amountPaid,
+                'payment_due_date' => $paymentDueDate,
+                'payment_completed_date' => $paymentCompletedDate,
                 'notes' => $data['status'] === 'submitted' ? 'Waiting for delivery from supplier' : null,
                 'terms_and_conditions' => "Payment terms: {$supplier->payment_terms_days} days\nDelivery lead time: {$supplier->lead_time_days} days",
                 'created_at' => $data['order_date'],

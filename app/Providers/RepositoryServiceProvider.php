@@ -11,6 +11,7 @@ use App\Repositories\Contracts\CustomerRepositoryInterface;
 use App\Repositories\Contracts\PurchaseOrderRepositoryInterface;
 use App\Repositories\Contracts\SupplierRepositoryInterface;
 use App\Repositories\Contracts\CreditTransactionRepositoryInterface;
+use App\Repositories\Contracts\PayableTransactionRepositoryInterface;
 use App\Repositories\Contracts\DeliveryRepositoryInterface;
 
 // Implementations
@@ -20,6 +21,7 @@ use App\Repositories\Eloquent\CustomerRepository;
 use App\Repositories\Eloquent\PurchaseOrderRepository;
 use App\Repositories\Eloquent\SupplierRepository;
 use App\Repositories\Eloquent\CreditTransactionRepository;
+use App\Repositories\Eloquent\PayableTransactionRepository;
 use App\Repositories\Eloquent\DeliveryRepository;
 
 class RepositoryServiceProvider extends ServiceProvider
@@ -36,6 +38,7 @@ class RepositoryServiceProvider extends ServiceProvider
         SupplierRepositoryInterface::class => SupplierRepository::class,
         PurchaseOrderRepositoryInterface::class => PurchaseOrderRepository::class,
         CreditTransactionRepositoryInterface::class => CreditTransactionRepository::class,
+        PayableTransactionRepositoryInterface::class => PayableTransactionRepository::class,
         DeliveryRepositoryInterface::class => DeliveryRepository::class,
     ];
 

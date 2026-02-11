@@ -99,4 +99,19 @@ class PurchaseOrderRepository extends BaseRepository implements PurchaseOrderRep
             ->orderBy('total_amount', 'desc')
             ->get();
     }
+
+    public function getUnpaidBySupplier(int $supplierId, ?array $poUuids = null): Collection
+    {
+        $query = $this->newQuery()
+            ->where('supplier_id', $supplierId)
+            ->where('status', 'received') // Only received POs have invoices
+            ->whereIn('payment_status', ['unpaid', 'partial'])
+            ->orderBy('payment_due_date', 'asc'); // FIFO by due date
+
+        if ($poUuids) {
+            $query->whereIn('uuid', $poUuids);
+        }
+
+        return $query->get();
+    }
 }

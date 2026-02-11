@@ -4,8 +4,10 @@ namespace App\Providers;
 
 use App\Events\SaleCompleted;
 use App\Events\SaleVoided;
+use App\Events\PurchaseOrderReceived;
 use App\Listeners\LogSaleActivity;
 use App\Listeners\UpdateCustomerTotals;
+use App\Listeners\CreateAPInvoiceForReceivedPO;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -24,6 +26,9 @@ class EventServiceProvider extends ServiceProvider
         ],
         SaleCompleted::class => [
             UpdateCustomerTotals::class,
+        ],
+        PurchaseOrderReceived::class => [
+            CreateAPInvoiceForReceivedPO::class,
         ],
     ];
 

@@ -30,8 +30,14 @@ class SupplierResource extends JsonResource
             'is_active' => (bool) $this->is_active,
             'notes' => $this->notes,
 
+            // AP (Accounts Payable) fields
+            'total_outstanding' => $this->total_outstanding ?? 0,
+            'total_purchases' => $this->total_purchases ?? 0,
+            'payment_rating' => $this->payment_rating ?? 'good',
+
             // Statistics
             'total_purchase_orders' => $this->whenCounted('purchaseOrders'),
+            'payables_count' => $this->whenCounted('payableTransactions'),
             'total_purchases_amount' => $this->when(isset($this->total_purchases_amount), function () {
                 return $this->total_purchases_amount / 100; // Convert centavos to pesos
             }),

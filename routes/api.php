@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\AccountsPayableController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\DeliveryController;
 use App\Http\Controllers\Api\ReportController;
@@ -138,6 +139,21 @@ Route::prefix('v1')->middleware(['auth:sanctum', 'store.access'])->group(functio
     Route::post('/suppliers/{uuid}/products', [SupplierController::class, 'addProduct']);
     Route::delete('/suppliers/{uuid}/products/{productUuid}', [SupplierController::class, 'removeProduct']);
     Route::get('/suppliers/{uuid}/price-history', [SupplierController::class, 'priceHistory']);
+
+    // Accounts Payable (AP) API
+    Route::prefix('ap')->group(function () {
+        Route::get('/overview', [AccountsPayableController::class, 'overview']);
+        Route::get('/aging', [AccountsPayableController::class, 'aging']);
+        Route::get('/overdue', [AccountsPayableController::class, 'overdue']);
+        Route::get('/payment-schedule', [AccountsPayableController::class, 'paymentSchedule']);
+        Route::get('/disbursement-report', [AccountsPayableController::class, 'disbursementReport']);
+    });
+
+    // Supplier-specific AP routes
+    Route::get('/suppliers/{uuid}/payables', [AccountsPayableController::class, 'supplierPayables']);
+    Route::get('/suppliers/{uuid}/ledger', [AccountsPayableController::class, 'supplierLedger']);
+    Route::post('/suppliers/{uuid}/payments', [AccountsPayableController::class, 'makePayment']);
+    Route::get('/suppliers/{uuid}/statement', [AccountsPayableController::class, 'statement']);
 
     // Purchase Orders API
     Route::get('/purchase-orders', [PurchaseOrderController::class, 'index']);

@@ -8,15 +8,15 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class CreditTransaction extends Model
+class PayableTransaction extends Model
 {
     use HasUuid, BelongsToStore;
 
     protected $fillable = [
         'uuid',
         'store_id',
-        'customer_id',
-        'sale_id',
+        'supplier_id',
+        'purchase_order_id',
         'user_id',
         'type',
         'reference_number',
@@ -46,14 +46,14 @@ class CreditTransaction extends Model
     }
 
     // Relationships
-    public function customer(): BelongsTo
+    public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Supplier::class);
     }
 
-    public function sale(): BelongsTo
+    public function purchaseOrder(): BelongsTo
     {
-        return $this->belongsTo(Sale::class);
+        return $this->belongsTo(PurchaseOrder::class);
     }
 
     public function user(): BelongsTo
@@ -87,9 +87,9 @@ class CreditTransaction extends Model
     }
 
     // Scopes
-    public function scopeCharges($query)
+    public function scopeInvoices($query)
     {
-        return $query->where('type', 'charge');
+        return $query->where('type', 'invoice');
     }
 
     public function scopePayments($query)
@@ -99,7 +99,7 @@ class CreditTransaction extends Model
 
     public function scopeOverdue($query)
     {
-        return $query->where('type', 'charge')
+        return $query->where('type', 'invoice')
             ->where('due_date', '<', now())
             ->whereNull('paid_date');
     }
